@@ -50,6 +50,9 @@ where
     Tout: Sized + 'static + Clone,
 {
     pub fn new(inner: &'a Mutex<FunctionMockInner<Tin, Tout>>) -> Self {
+        inner.lock().unwrap().call_history.clear();
+        inner.lock().unwrap().return_val.clear();
+        inner.lock().unwrap().default_ret_val = None;
         FunctionMock { inner }
     }
 
