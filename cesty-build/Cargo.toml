@@ -1,0 +1,14 @@
+[package]
+name = "cesty-build"
+version = "0.1.0"
+edition = "2021"
+authors = ["Pil Eghoff <contact@pil.fyi>"]
+description = "Build-script helpers for compiling C test sources used with cesty"
+repository = "https://github.com/pileghoff/cesty"
+license = "MIT OR Apache-2.0"
+keywords = ["mock", "testing", "ffi", "embedded"]
+categories = ["development-tools::ffi", "development-tools::testing", "embedded"]
+
+[dependencies]
+cc = "1.0"
+toml = "0.8"

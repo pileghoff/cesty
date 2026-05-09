@@ -1,16 +1,16 @@
-workspace = { members = ["ffi-mock-macro"] }
+workspace = { members = ["examples/gpio", "examples/uart", "cesty-build", "cesty-macro"] }
 [package]
-name = "ffi-mock"
+name = "cesty"
 version = "0.1.0"
 edition = "2021"
 authors = ["Pil Eghoff <contact@pil.fyi>"]
 description = "A dead simple way of mocking extern functions, in cases where the external library is not avaible."
 readme = "README.md"
-repository = "https://github.com/pileghoff/ffi-mock"
+repository = "https://github.com/pileghoff/cesty"
 license = "MIT OR Apache-2.0"
 keywords = ["mock", "testing", "ffi", "embedded"]
 categories = ["development-tools::ffi", "development-tools::testing", "embedded"]
 
 [dependencies]
 lazy_static = "1.4.0"
-ffi-mock-macro = {path="./ffi-mock-macro/", version= "0.1.0" }
+cesty-macro = {path="./cesty-macro/", version= "0.1.0" }

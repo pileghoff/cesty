@@ -2,8 +2,8 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    FnArg, Ident, Signature, Type, parse_macro_input, parse_str, punctuated::Punctuated,
-    token::Comma,
+    parse_macro_input, parse_str, punctuated::Punctuated, token::Comma, FnArg, Ident, Signature,
+    Type,
 };
 
 fn get_names(in_sig: &Punctuated<FnArg, Comma>) -> Punctuated<Ident, Comma> {
@@ -54,16 +54,16 @@ pub fn define_mock(input: TokenStream) -> TokenStream {
     };
 
     quote!(
-        ffi_mock::lazy_static! {
-            static ref #static_mock_name: std::sync::Mutex<ffi_mock::FunctionMockInner<(#in_types), #out_sig>> =
-                std::sync::Mutex::new(ffi_mock::FunctionMockInner::new());
+        cesty::lazy_static! {
+            static ref #static_mock_name: std::sync::Mutex<cesty::FunctionMockInner<(#in_types), #out_sig>> =
+                std::sync::Mutex::new(cesty::FunctionMockInner::new());
         }
 
         #[no_mangle]
         extern "C" fn #extern_name(#in_sig) -> #out_sig {
-            let mut ffi_mock_mutex = #static_mock_name.lock().unwrap();
-            ffi_mock_mutex.call_history.push( (#in_names) );
-            ffi_mock_mutex.get_next_return()
+            let mut cesty_mutex = #static_mock_name.lock().unwrap();
+            cesty_mutex.call_history.push( (#in_names) );
+            cesty_mutex.get_next_return()
         }
     )
     .into()
@@ -76,7 +76,7 @@ pub fn mock(input: TokenStream) -> TokenStream {
 
     quote!(
         {
-            ffi_mock::FunctionMock::new(&#static_mock_name)
+            cesty::FunctionMock::new(&#static_mock_name)
         }
     )
     .into()

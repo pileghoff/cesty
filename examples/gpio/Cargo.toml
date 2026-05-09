@@ -1,0 +1,19 @@
+[package]
+name = "cesty-gpio-example"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[test]]
+name = "gpio"
+path = "tests/gpio.rs"
+
+[dependencies]
+cesty = { path = "../.." }
+
+[build-dependencies]
+cesty-build = { path = "../../cesty-build" }
+
+[cesty.gpio]
+sources = ["c/gpio_driver.c"]
+includes = ["include"]

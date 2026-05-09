@@ -1,0 +1,22 @@
+[package]
+name = "cesty-uart-example"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[test]]
+name = "uart"
+path = "tests/uart.rs"
+
+[dependencies]
+cesty = { path = "../.." }
+
+[dev-dependencies]
+proptest = "1.6"
+
+[build-dependencies]
+cesty-build = { path = "../../cesty-build" }
+
+[cesty.uart]
+sources = ["c/uart_buffer.c"]
+includes = ["include"]
