@@ -2,11 +2,8 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    parse::Parse,
-    parse_macro_input, parse_str,
-    punctuated::Punctuated,
-    token::{Comma, Default},
-    Expr, FnArg, Ident, Signature, Token, Type, TypeParen,
+    FnArg, Ident, Signature, Type, parse_macro_input, parse_str, punctuated::Punctuated,
+    token::Comma,
 };
 
 fn get_names(in_sig: &Punctuated<FnArg, Comma>) -> Punctuated<Ident, Comma> {
@@ -41,7 +38,7 @@ fn get_types(in_sig: &Punctuated<FnArg, Comma>) -> Punctuated<Type, Comma> {
 }
 
 #[proc_macro]
-pub fn mock(input: TokenStream) -> TokenStream {
+pub fn define_mock(input: TokenStream) -> TokenStream {
     let func = parse_macro_input!(input as Signature);
     let static_mock_name = format_ident!(
         "STATIC_MOCK_{}",
@@ -57,19 +54,28 @@ pub fn mock(input: TokenStream) -> TokenStream {
     };
 
     quote!(
+        ffi_mock::lazy_static! {
+            static ref #static_mock_name: std::sync::Mutex<ffi_mock::FunctionMockInner<(#in_types), #out_sig>> =
+                std::sync::Mutex::new(ffi_mock::FunctionMockInner::new());
+        }
+
+        #[no_mangle]
+        extern "C" fn #extern_name(#in_sig) -> #out_sig {
+            let mut ffi_mock_mutex = #static_mock_name.lock().unwrap();
+            ffi_mock_mutex.call_history.push( (#in_names) );
+            ffi_mock_mutex.get_next_return()
+        }
+    )
+    .into()
+}
+
+#[proc_macro]
+pub fn mock(input: TokenStream) -> TokenStream {
+    let func = parse_macro_input!(input as Ident);
+    let static_mock_name = format_ident!("STATIC_MOCK_{}", func.to_string().to_ascii_uppercase());
+
+    quote!(
         {
-
-            ffi_mock::lazy_static! {
-                static ref #static_mock_name: std::sync::Mutex<ffi_mock::FunctionMockInner<(#in_types), #out_sig>> =
-                    std::sync::Mutex::new(ffi_mock::FunctionMockInner::new());
-            }
-
-            #[no_mangle]
-            extern "C" fn #extern_name(#in_sig) -> #out_sig {
-                let mut ffi_mock_mutex = #static_mock_name.lock().unwrap();
-                ffi_mock_mutex.call_history.push( (#in_names) );
-                ffi_mock_mutex.get_next_return()
-            }
             ffi_mock::FunctionMock::new(&#static_mock_name)
         }
     )

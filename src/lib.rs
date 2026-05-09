@@ -1,3 +1,4 @@
+pub use ffi_mock_macro::define_mock;
 pub use ffi_mock_macro::mock;
 
 use core::panic;

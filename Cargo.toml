@@ -13,4 +13,4 @@ categories = ["development-tools::ffi", "development-tools::testing", "embedded"
 
 [dependencies]
 lazy_static = "1.4.0"
-ffi-mock-macro = "0.1.0" 
+ffi-mock-macro = {path="./ffi-mock-macro/", version= "0.1.0" }
