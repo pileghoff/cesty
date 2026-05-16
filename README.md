@@ -44,3 +44,21 @@ fn main() {
     cesty_build::build_c_tests();
 }
 ```
+
+# TODO
+
+## Auto stub
+
+You might not want to include a bunch of source files you know wont be required in your testing. If functions in those files are referenced in your sources that you do compile anyway, you will get a linker error.
+
+Cesty should have the option of auto-stubbing all these functions, with functions that panic when called.
+
+This can be enabled as a general option, or you can tell Cesty to stub specific symbols.
+
+## Bindgen integration
+
+It would be nice if these tricks (auto-stubbing, header replace, etc.) could be used when generating bindings used for testing.
+
+## Real world test
+
+In the examples folder i really want an example of testing a driver from an open source project using proptest.
