@@ -45,15 +45,22 @@ fn main() {
 }
 ```
 
-# TODO
-
 ## Auto stub
 
-You might not want to include a bunch of source files you know wont be required in your testing. If functions in those files are referenced in your sources that you do compile anyway, you will get a linker error.
+If your file under test references a bunch of functions, that you dont want to build, you can enable auto-stub.
 
-Cesty should have the option of auto-stubbing all these functions, with functions that panic when called.
+This will automatically stub any undefined symbol, meaning you wont get any errors when trying to link.
 
-This can be enabled as a general option, or you can tell Cesty to stub specific symbols.
+If you call any of these missing functions, you will simply get a panic.
+
+# TODO
+
+## Cleanup build lib
+
+The build lib has a bunch of WIP.
+Bad error handling etc.
+
+This needs to be cleaned up, and i need to make a way for setting build flags etc.
 
 ## Bindgen integration
 

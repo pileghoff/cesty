@@ -8,4 +8,9 @@ void driver_set_led(int pin, int enabled) {
   hal_gpio_write(pin, enabled ? 1 : 0);
 }
 
-int driver_read_button(int pin) { return hal_gpio_read(pin); }
+int driver_read_button(int pin) {
+  if (pin == 0xdeadbeef) {
+    driver_undefined();
+  }
+  return hal_gpio_read(pin);
+}
