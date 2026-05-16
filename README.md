@@ -2,20 +2,11 @@
 
 Cesty is a tool for testing C code using Rust, including building and mock generation.
 
-## Quick start
+## Build tool
 
-First, add Cesty as a dependency:
-```toml
-[dependencies]
-cesty = "0.1.0"
+The goal of Cesty is to make it simpler to compile C sources, outside their native environment (both build environment and compile target)
 
-[build-dependencies]
-cesty-build = "0.1.0"
-```
-
-Next we need to add the test as a target in the toml file.
-Cesty requires that for each C target you want to test, you create a separate test target.
-This test target tells the compiler where to find the Rust file that defines the test, the C source files that needs to be tested as well as the header files required for building.
+You declare a Cesty test in you toml file, and tell Cesty which C file to compile and which include folders to include.
 
 ```toml
 [[test]]
@@ -27,29 +18,29 @@ sources = ["src/foo.c", "src/bar.c"]
 includes = ["include/"]
 ```
 
-You also need to add a `build.rs` to your project, that calls the Cesty build function.
+You can also tell Cesty to replace certain headers with your fake headers:
+
+```toml
+[cesty.test_foo]
+sources = ["src/foo.c", "src/bar.c"]
+includes = ["include/"]
+replace = {"arch/types.h" = "much_simpler_types.h"}
+```
+
+
+You can even tell Cesty to just replace certain headers with empty ones, if you dont need anything defined in them anyway:
+
+```toml
+[cesty.test_foo]
+sources = ["src/foo.c", "src/bar.c"]
+includes = ["include/"]
+ignore = ["arch/panic_handler.h"]
+```
+
+In your `build.rs` you need to call the Cesty build function:
 
 ```rust,ignore
 fn main() {
     cesty_build::build_c_tests();
 }
-```
-
-For each entry in `[cesty]`, the build helper compiles the
-declared C sources with the `cc` crate, emits Cargo link directives for the
-matching static library, and tracks the manifest, C sources, and headers under
-the declared include paths for rebuilds.
-
-See `examples/gpio` for a complete working crate with C sources, headers,
-`build.rs`, test metadata, and Rust integration tests. Run it with:
-
-```sh
-cargo test --manifest-path examples/gpio/Cargo.toml
-```
-
-See `examples/uart` for a C buffering driver that depends on a lower-level UART
-driver mocked from Rust:
-
-```sh
-cargo test --manifest-path examples/uart/Cargo.toml
 ```

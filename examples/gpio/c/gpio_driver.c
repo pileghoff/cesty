@@ -1,4 +1,5 @@
 #include "gpio_driver.h"
+#include "arch/types.h"
 
 extern void hal_gpio_write(int pin, int value);
 extern int hal_gpio_read(int pin);

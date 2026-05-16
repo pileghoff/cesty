@@ -17,3 +17,4 @@ cesty-build = { path = "../../cesty-build" }
 [cesty.gpio]
 sources = ["c/gpio_driver.c"]
 includes = ["include"]
+ignore = ["arch/types.h"]

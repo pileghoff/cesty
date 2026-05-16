@@ -52,12 +52,10 @@ pub fn build_c_tests_from_manifest(manifest_path: impl AsRef<Path>) -> Result<()
             source,
         })?;
 
+    println!("cargo:rerun-if-changed={}", manifest_path.display());
     let Some(c_tests) = manifest.get("cesty").and_then(toml::Value::as_table) else {
-        println!("cargo:rerun-if-changed={}", manifest_path.display());
         return Ok(());
     };
-
-    println!("cargo:rerun-if-changed={}", manifest_path.display());
 
     for (test_name, config) in c_tests {
         let config = config
@@ -77,6 +75,46 @@ pub fn build_c_tests_from_manifest(manifest_path: impl AsRef<Path>) -> Result<()
             println!("cargo:rerun-if-changed={}", path.display());
             build.file(path);
         }
+        let out_dir = env::var_os("OUT_DIR").unwrap();
+        let dest_path = Path::new(&out_dir).join("shadow_include");
+        let _ = fs::remove_dir_all(dest_path.clone());
+        fs::create_dir_all(dest_path.clone()).map_err(|e: std::io::Error| {
+            BuildError::WritePermission {
+                path: dest_path.clone(),
+                source: e,
+            }
+        })?;
+
+        if let Ok(ignore) = string_array(config, test_name, "ignore", false) {
+            for ignore in ignore {
+                let ignore = Path::new(&dest_path).join(ignore);
+
+                if ignore.parent().unwrap() != dest_path {
+                    fs::create_dir_all(ignore.parent().unwrap()).unwrap();
+                }
+
+                fs::File::create(ignore.clone()).map_err(|e: std::io::Error| {
+                    BuildError::WritePermission {
+                        path: ignore,
+                        source: e,
+                    }
+                })?;
+            }
+        }
+
+        if let Ok(replace) = string_pairs(config, test_name, "replace") {
+            for (original, fake) in replace {
+                let new_fake = Path::new(&dest_path).join(original.clone());
+                let fake = &manifest_dir.join(fake);
+
+                if new_fake.parent().unwrap() != dest_path {
+                    fs::create_dir_all(new_fake.parent().unwrap()).unwrap();
+                }
+
+                fs::copy(fake, new_fake).unwrap();
+            }
+            build.include(dest_path);
+        }
 
         for include in &includes {
             let path = manifest_dir.join(include);
@@ -88,6 +126,35 @@ pub fn build_c_tests_from_manifest(manifest_path: impl AsRef<Path>) -> Result<()
     }
 
     Ok(())
+}
+
+fn string_pairs(
+    config: &toml::map::Map<String, toml::Value>,
+    test_name: &str,
+    key: &'static str,
+) -> Result<Vec<(String, String)>, BuildError> {
+    let Some(value) = config.get(key) else {
+        return Ok(Vec::new());
+    };
+
+    let values = value
+        .as_table()
+        .ok_or_else(|| BuildError::InvalidTestConfig {
+            test_name: test_name.to_owned(),
+            message: format!("`{key}` must be an array of strings"),
+        })?;
+
+    fn _cleanup(mut s: String) -> String {
+        if s.starts_with('"') && s.ends_with('"') {
+            s.remove(0);
+            s.pop();
+        }
+        s
+    }
+    Ok(values
+        .iter()
+        .map(|value| (_cleanup(value.0.to_string()), _cleanup(value.1.to_string())))
+        .collect())
 }
 
 fn string_array(
@@ -197,6 +264,10 @@ pub enum BuildError {
         path: PathBuf,
         source: std::io::Error,
     },
+    WritePermission {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 }
 
 impl fmt::Display for BuildError {
@@ -229,6 +300,13 @@ impl fmt::Display for BuildError {
                 write!(
                     formatter,
                     "failed to read include directory `{}`: {source}",
+                    path.display()
+                )
+            }
+            BuildError::WritePermission { path, source } => {
+                write!(
+                    formatter,
+                    "failed to write to path `{}`: {source}",
                     path.display()
                 )
             }
