@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     env,
     error::Error,
     ffi::OsString,
@@ -34,15 +35,7 @@ pub fn try_build_c_tests() -> Result<(), BuildError> {
     build_c_tests_from_manifest(&manifest_path)
 }
 
-/// Builds C test libraries from an explicit manifest path.
-pub fn build_c_tests_from_manifest(manifest_path: impl AsRef<Path>) -> Result<(), BuildError> {
-    let manifest_path = manifest_path.as_ref();
-    let manifest_dir = manifest_path
-        .parent()
-        .ok_or_else(|| BuildError::InvalidManifestPath {
-            path: manifest_path.to_path_buf(),
-        })?;
-
+fn get_manifest(manifest_path: &Path) -> Result<toml::Value, BuildError> {
     let manifest =
         fs::read_to_string(manifest_path).map_err(|source| BuildError::ReadManifest {
             path: manifest_path.to_path_buf(),
@@ -53,6 +46,19 @@ pub fn build_c_tests_from_manifest(manifest_path: impl AsRef<Path>) -> Result<()
         .map_err(|source| BuildError::ParseManifest {
             path: manifest_path.to_path_buf(),
             source,
+        })?;
+
+    Ok(manifest)
+}
+
+/// Builds C test libraries from an explicit manifest path.
+pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), BuildError> {
+    let manifest = get_manifest(manifest_path)?;
+
+    let manifest_dir = manifest_path
+        .parent()
+        .ok_or_else(|| BuildError::InvalidManifestPath {
+            path: manifest_path.to_path_buf(),
         })?;
 
     println!("cargo:rerun-if-changed={}", manifest_path.display());
@@ -79,44 +85,28 @@ pub fn build_c_tests_from_manifest(manifest_path: impl AsRef<Path>) -> Result<()
             build.file(path);
         }
         let out_dir = env::var_os("OUT_DIR").unwrap();
-        let dest_path = Path::new(&out_dir).join("shadow_include");
-        let _ = fs::remove_dir_all(dest_path.clone());
-        fs::create_dir_all(dest_path.clone()).map_err(|e: std::io::Error| {
+        let shadow_include_path = Path::new(&out_dir).join("shadow_include").join(test_name);
+
+        build.include(&shadow_include_path);
+        let _ = fs::remove_dir_all(&shadow_include_path);
+        fs::create_dir_all(&shadow_include_path).map_err(|e: std::io::Error| {
             BuildError::WritePermission {
-                path: dest_path.clone(),
+                path: shadow_include_path.clone(),
                 source: e,
             }
         })?;
 
         if let Ok(ignore) = string_array(config, test_name, "ignore", false) {
             for ignore in ignore {
-                let ignore = Path::new(&dest_path).join(ignore);
-
-                if ignore.parent().unwrap() != dest_path {
-                    fs::create_dir_all(ignore.parent().unwrap()).unwrap();
-                }
-
-                fs::File::create(ignore.clone()).map_err(|e: std::io::Error| {
-                    BuildError::WritePermission {
-                        path: ignore,
-                        source: e,
-                    }
-                })?;
+                create_empty_header(&ignore, &shadow_include_path)?;
             }
         }
 
         if let Ok(replace) = string_pairs(config, test_name, "replace") {
             for (original, fake) in replace {
-                let new_fake = Path::new(&dest_path).join(original.clone());
-                let fake = &manifest_dir.join(fake);
-
-                if new_fake.parent().unwrap() != dest_path {
-                    fs::create_dir_all(new_fake.parent().unwrap()).unwrap();
-                }
-
-                fs::copy(fake, new_fake).unwrap();
+                let fake = manifest_dir.join(fake);
+                shadow_header(&fake, &original, &shadow_include_path)?;
             }
-            build.include(dest_path);
         }
 
         for include in &includes {
@@ -133,6 +123,37 @@ pub fn build_c_tests_from_manifest(manifest_path: impl AsRef<Path>) -> Result<()
             }
         }
     }
+
+    Ok(())
+}
+
+fn create_empty_header(header_name: &str, shadow_include_path: &Path) -> Result<(), BuildError> {
+    let path = Path::new(&shadow_include_path).join(header_name);
+
+    if path.parent().unwrap() != shadow_include_path {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    fs::File::create(path.clone())
+        .map_err(|e: std::io::Error| BuildError::WritePermission { path, source: e })?;
+
+    Ok(())
+}
+
+fn shadow_header(
+    fake: &Path,
+    header_name_original: &str,
+    shadow_include_path: &Path,
+) -> Result<(), BuildError> {
+    let shadow_include = Path::new(&shadow_include_path).join(header_name_original);
+
+    if let Some(shadow_parent) = shadow_include.parent() {
+        if shadow_parent != shadow_include_path {
+            fs::create_dir_all(shadow_include.parent().unwrap()).unwrap();
+        }
+    }
+
+    fs::copy(fake, shadow_include).unwrap();
 
     Ok(())
 }
@@ -214,7 +235,7 @@ fn string_array(
     test_name: &str,
     key: &'static str,
     required: bool,
-) -> Result<Vec<String>, BuildError> {
+) -> Result<VecDeque<String>, BuildError> {
     let Some(value) = config.get(key) else {
         if required {
             return Err(BuildError::InvalidTestConfig {
@@ -223,7 +244,7 @@ fn string_array(
             });
         }
 
-        return Ok(Vec::new());
+        return Ok(VecDeque::new());
     };
 
     let values = value
