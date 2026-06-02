@@ -1,4 +1,4 @@
-# cesty
+![Cesty logo](logo.svg)
 
 Cesty is a tool for testing C code using Rust, including building and mock generation.
 
