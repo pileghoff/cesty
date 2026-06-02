@@ -85,6 +85,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cesty-mock-example"
+version = "0.1.0"
+dependencies = [
+ "cesty",
+ "cesty-build",
+]
+
+[[package]]
 name = "cesty-uart-example"
 version = "0.1.0"
 dependencies = [

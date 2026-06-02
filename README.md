@@ -53,6 +53,43 @@ This will automatically stub any undefined symbol, meaning you wont get any erro
 
 If you call any of these missing functions, you will simply get a panic.
 
+# Mocks
+
+Using cest-macro, you can generate mocks and spies.
+
+First, you need to define the type of the mock.
+```rust,ignore
+use cesty::{define_mock, mock};
+define_mock!(fn foo(pin: c_int) -> c_int);
+```
+
+This will generate a function, with the type and name you provide, that can later be used as part of the mock instance.
+
+In a test, the mock can be instantiated
+```rust,ignore
+let foo_mock = mock!(foo);
+```
+
+With this, you can:
+```rust,ignore
+// set the default return value
+foo_mock.set_default_return(1);
+assert_eq!(foo(10), 1);
+
+// set the next return value
+foo_mock.add_return(2);
+assert_eq!(foo(11), 2);
+
+// queue up multiple return values
+foo_mock.add_return(3);
+foo_mock.add_return(4);
+assert_eq!(foo(12), 3);
+assert_eq!(foo(13), 4);
+assert_eq!(foo(14), 1); // at the end, you will then get back the default value you previously set.
+
+// you can also get the call history as a vec
+assert_eq!(foo_mock.calls(), vec![10, 11, 12, 13, 14]);
+```
 # TODO
 
 ## Cleanup build lib
