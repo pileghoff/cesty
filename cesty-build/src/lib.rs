@@ -7,7 +7,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use object::{Object, ObjectSection, ObjectSymbol, read::archive::ArchiveFile};
+use object::{Object, ObjectSymbol, read::archive::ArchiveFile};
+
+use crate::llvm_pass::build_llvm_plugin;
+
+pub mod llvm_pass;
 
 /// Reads `[package.metadata.c_tests]` from the current package manifest and
 /// compiles each declared C test library.
@@ -78,6 +82,7 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), BuildErro
         let includes = string_array(config, test_name, "includes", false)?;
 
         let mut build = cc::Build::new();
+        build.compiler("clang-18");
 
         for source in &sources {
             let path = manifest_dir.join(source);
@@ -115,6 +120,9 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), BuildErro
             build.include(path);
         }
 
+        build.flag("-O0");
+        let llvm_plugin = build_llvm_plugin();
+        build.flag(format!("-fpass-plugin={}", llvm_plugin.to_str().unwrap()));
         build.compile(test_name);
 
         if let Some(auto_stub_key) = config.get("auto_stub") {
@@ -180,7 +188,7 @@ fn auto_stub(test_name: &str, out_dir: &OsString) {
         for sym in obj.symbols() {
             if sym.is_undefined() {
                 if let Ok(name) = sym.name() {
-                    if !name.is_empty() {
+                    if !name.is_empty() && name != "cesty_store" {
                         contents.push_str(&format!(
                             r#"
                             void __attribute__((weak)) {}() {{

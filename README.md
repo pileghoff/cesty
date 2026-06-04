@@ -90,6 +90,39 @@ assert_eq!(foo(14), 1); // at the end, you will then get back the default value 
 // you can also get the call history as a vec
 assert_eq!(foo_mock.calls(), vec![10, 11, 12, 13, 14]);
 ```
+
+# Memory mocking
+
+Oftentimes in embedded systems, functionality is implemented not in software, but as a memory mapped peripheral.
+To interact with these, we read from and write to special memory addresses.
+
+This poses two major problems:
+1. These memory addresses are often outside the legal range when running on host
+2. We cant usually intercept these reads and writes to inspect them like we can function calls.
+
+One solution is to make another layer where functions are used to access these registers, and if your code is already structured like that, you have solved the above problems.
+
+In your test code, you can add the following:
+
+```rust,ignore
+let mem_mock = Memmock::new();
+mem_mock.set(0x8000, vec![1]);
+```
+
+When any C code now attempts to read from this address, 0x8000, it will read a 1.
+
+If it attempts to write into address 0x8000, it will succeed.
+
+What happens is that its never actually accessing any memory at 0x8000. Instead the read and write operations are intercepted and redirected to a hashmap.
+This also allows you to read and write to the address using the `get` and `set` members on `Memmock`.
+
+## Memmock todo
+
+The following still needs work:
+- Allow inspecting read and write operations, like we can with a function mock
+- Sequential access: If 4 bytes are written to 0x8000, access at 0x8001 should be resolved correctly.
+- More complicated behaviour should be allowed using callbacks. This can be used to emulate registers that dont simply behave as datastores.
+
 # TODO
 
 ## Cleanup build lib

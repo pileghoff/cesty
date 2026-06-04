@@ -1,11 +1,5 @@
-use std::ffi::c_int;
-
 use cesty::{define_mock, mock};
-
-#[no_mangle]
-extern "C" fn panic() {
-    panic!();
-}
+use std::ffi::c_int;
 
 define_mock!(fn hal_gpio_write(pin: c_int, value: c_int));
 define_mock!(fn hal_gpio_read(pin: c_int) -> c_int);

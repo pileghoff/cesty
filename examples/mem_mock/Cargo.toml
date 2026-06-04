@@ -1,0 +1,18 @@
+[package]
+name = "cesty-mem-mock-example"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[test]]
+name = "example"
+path = "tests/example.rs"
+
+[dependencies]
+cesty = { path = "../.." }
+
+[build-dependencies]
+cesty-build = { path = "../../cesty-build" }
+
+[cesty.example]
+sources = ["c/example.c"]

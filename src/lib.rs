@@ -2,6 +2,12 @@
 pub use cesty_macro::define_mock;
 pub use cesty_macro::mock;
 pub use lazy_static::lazy_static;
+pub mod mem_mock;
+
+#[no_mangle]
+extern "C" fn panic() {
+    panic!();
+}
 
 unsafe impl<Tin, Tout> Send for FunctionMockInner<Tin, Tout>
 where
