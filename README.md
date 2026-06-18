@@ -120,8 +120,8 @@ This also allows you to read and write to the address using the `get` and `set` 
 
 The following still needs work:
 - Allow inspecting read and write operations, like we can with a function mock
-- Sequential access: If 4 bytes are written to 0x8000, access at 0x8001 should be resolved correctly.
 - More complicated behaviour should be allowed using callbacks. This can be used to emulate registers that dont simply behave as datastores.
+- Intercept libc based memory access like memcpy, memcmp and memset
 
 # TODO
 

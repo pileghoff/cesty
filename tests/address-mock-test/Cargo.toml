@@ -1,0 +1,18 @@
+[package]
+name = "address-mock-test"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cesty = { path = "../.." }
+proptest = "1.11.0"
+
+[build-dependencies]
+cesty-build = { path = "../../cesty-build" }
+
+[cesty.example]
+sources = ["dut.c"]
+
+[[test]]
+name = "test"
+path = "test.rs"
