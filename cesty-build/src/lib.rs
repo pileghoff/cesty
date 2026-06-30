@@ -1,17 +1,20 @@
 use std::{
     collections::VecDeque,
     env,
-    error::Error,
     ffi::OsString,
-    fmt, fs,
+    fs,
     path::{Path, PathBuf},
 };
 
 use object::{Object, ObjectSymbol, read::archive::ArchiveFile};
 
-use crate::llvm_pass::build_llvm_plugin;
+use find_clang::find_clang;
+use llvm_pass::build_llvm_plugin;
 
-pub mod llvm_pass;
+use thiserror::Error;
+
+mod find_clang;
+mod llvm_pass;
 
 /// Reads `[package.metadata.c_tests]` from the current package manifest and
 /// compiles each declared C test library.
@@ -30,42 +33,35 @@ pub fn build_c_tests() {
 }
 
 /// Fallible variant of [`build_c_tests`].
-pub fn try_build_c_tests() -> Result<(), BuildError> {
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR").map_err(|_| BuildError::MissingEnv {
-        name: "CARGO_MANIFEST_DIR",
-    })?;
-    let manifest_path = Path::new(&manifest_dir).join("Cargo.toml");
+pub fn try_build_c_tests() -> Result<(), CestyBuildError> {
+    let manifest_path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap()).join("Cargo.toml");
 
     build_c_tests_from_manifest(&manifest_path)
 }
 
-fn get_manifest(manifest_path: &Path) -> Result<toml::Value, BuildError> {
+fn get_manifest(manifest_path: &Path) -> Result<toml::Value, CestyBuildError> {
     let manifest =
-        fs::read_to_string(manifest_path).map_err(|source| BuildError::ReadManifest {
+        fs::read_to_string(manifest_path).map_err(|cause| CestyBuildError::ManifestReadError {
             path: manifest_path.to_path_buf(),
-            source,
+            cause,
         })?;
-    let manifest = manifest
-        .parse::<toml::Value>()
-        .map_err(|source| BuildError::ParseManifest {
-            path: manifest_path.to_path_buf(),
-            source,
-        })?;
+    let manifest =
+        manifest
+            .parse::<toml::Value>()
+            .map_err(|cause| CestyBuildError::ManifestParseError {
+                path: manifest_path.to_path_buf(),
+                cause,
+            })?;
 
     Ok(manifest)
 }
 
 /// Builds C test libraries from an explicit manifest path.
-pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), BuildError> {
+pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), CestyBuildError> {
     let manifest = get_manifest(manifest_path)?;
 
-    let manifest_dir = manifest_path
-        .parent()
-        .ok_or_else(|| BuildError::InvalidManifestPath {
-            path: manifest_path.to_path_buf(),
-        })?;
+    let manifest_dir = manifest_path.parent().unwrap();
 
-    println!("cargo:rerun-if-changed={}", manifest_path.display());
     let Some(c_tests) = manifest.get("cesty").and_then(toml::Value::as_table) else {
         return Ok(());
     };
@@ -73,8 +69,8 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), BuildErro
     for (test_name, config) in c_tests {
         let config = config
             .as_table()
-            .ok_or_else(|| BuildError::InvalidTestConfig {
-                test_name: test_name.clone(),
+            .ok_or_else(|| CestyBuildError::ManifestTestParseError {
+                section: test_name.clone(),
                 message: "expected a table".to_owned(),
             })?;
 
@@ -82,7 +78,8 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), BuildErro
         let includes = string_array(config, test_name, "includes", false)?;
 
         let mut build = cc::Build::new();
-        build.compiler("clang-18");
+        let clang = find_clang()?;
+        build.compiler(clang);
 
         for source in &sources {
             let path = manifest_dir.join(source);
@@ -90,14 +87,15 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), BuildErro
             build.file(path);
         }
         let out_dir = env::var_os("OUT_DIR").unwrap();
+
         let shadow_include_path = Path::new(&out_dir).join("shadow_include").join(test_name);
 
         build.include(&shadow_include_path);
         let _ = fs::remove_dir_all(&shadow_include_path);
         fs::create_dir_all(&shadow_include_path).map_err(|e: std::io::Error| {
-            BuildError::WritePermission {
+            CestyBuildError::IoError {
                 path: shadow_include_path.clone(),
-                source: e,
+                cause: e,
             }
         })?;
 
@@ -121,8 +119,8 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), BuildErro
         }
 
         build.flag("-O0");
-        let llvm_plugin = build_llvm_plugin();
-        build.flag(format!("-fpass-plugin={}", llvm_plugin.to_str().unwrap()));
+        let llvm_plugin = build_llvm_plugin()?;
+        build.flag(format!("-fpass-plugin={}", llvm_plugin));
         build.compile(test_name);
 
         if let Some(auto_stub_key) = config.get("auto_stub") {
@@ -135,7 +133,10 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), BuildErro
     Ok(())
 }
 
-fn create_empty_header(header_name: &str, shadow_include_path: &Path) -> Result<(), BuildError> {
+fn create_empty_header(
+    header_name: &str,
+    shadow_include_path: &Path,
+) -> Result<(), CestyBuildError> {
     let path = Path::new(&shadow_include_path).join(header_name);
 
     if path.parent().unwrap() != shadow_include_path {
@@ -143,7 +144,7 @@ fn create_empty_header(header_name: &str, shadow_include_path: &Path) -> Result<
     }
 
     fs::File::create(path.clone())
-        .map_err(|e: std::io::Error| BuildError::WritePermission { path, source: e })?;
+        .map_err(|e: std::io::Error| CestyBuildError::IoError { path, cause: e })?;
 
     Ok(())
 }
@@ -152,16 +153,26 @@ fn shadow_header(
     fake: &Path,
     header_name_original: &str,
     shadow_include_path: &Path,
-) -> Result<(), BuildError> {
+) -> Result<(), CestyBuildError> {
     let shadow_include = Path::new(&shadow_include_path).join(header_name_original);
 
     if let Some(shadow_parent) = shadow_include.parent() {
         if shadow_parent != shadow_include_path {
-            fs::create_dir_all(shadow_include.parent().unwrap()).unwrap();
+            fs::create_dir_all(shadow_include.parent().ok_or(CestyBuildError::IoError {
+                path: shadow_include.to_path_buf(),
+                cause: std::io::ErrorKind::NotFound.into(),
+            })?)
+            .map_err(|cause| CestyBuildError::IoError {
+                path: shadow_parent.to_path_buf(),
+                cause,
+            })?;
         }
     }
 
-    fs::copy(fake, shadow_include).unwrap();
+    fs::copy(fake, shadow_include).map_err(|cause| CestyBuildError::IoError {
+        path: fake.to_path_buf(),
+        cause,
+    })?;
 
     Ok(())
 }
@@ -213,15 +224,15 @@ fn string_pairs(
     config: &toml::map::Map<String, toml::Value>,
     test_name: &str,
     key: &'static str,
-) -> Result<Vec<(String, String)>, BuildError> {
+) -> Result<Vec<(String, String)>, CestyBuildError> {
     let Some(value) = config.get(key) else {
         return Ok(Vec::new());
     };
 
     let values = value
         .as_table()
-        .ok_or_else(|| BuildError::InvalidTestConfig {
-            test_name: test_name.to_owned(),
+        .ok_or_else(|| CestyBuildError::ManifestTestParseError {
+            section: test_name.to_owned(),
             message: format!("`{key}` must be an array of strings"),
         })?;
 
@@ -243,11 +254,11 @@ fn string_array(
     test_name: &str,
     key: &'static str,
     required: bool,
-) -> Result<VecDeque<String>, BuildError> {
+) -> Result<VecDeque<String>, CestyBuildError> {
     let Some(value) = config.get(key) else {
         if required {
-            return Err(BuildError::InvalidTestConfig {
-                test_name: test_name.to_owned(),
+            return Err(CestyBuildError::ManifestTestParseError {
+                section: test_name.to_owned(),
                 message: format!("missing required `{key}` array"),
             });
         }
@@ -257,26 +268,25 @@ fn string_array(
 
     let values = value
         .as_array()
-        .ok_or_else(|| BuildError::InvalidTestConfig {
-            test_name: test_name.to_owned(),
+        .ok_or_else(|| CestyBuildError::ManifestTestParseError {
+            section: test_name.to_owned(),
             message: format!("`{key}` must be an array of strings"),
         })?;
 
     values
         .iter()
         .map(|value| {
-            value
-                .as_str()
-                .map(ToOwned::to_owned)
-                .ok_or_else(|| BuildError::InvalidTestConfig {
-                    test_name: test_name.to_owned(),
+            value.as_str().map(ToOwned::to_owned).ok_or_else(|| {
+                CestyBuildError::ManifestTestParseError {
+                    section: test_name.to_owned(),
                     message: format!("`{key}` must be an array of strings"),
-                })
+                }
+            })
         })
         .collect()
 }
 
-fn emit_header_rerun_directives(path: &Path) -> Result<(), BuildError> {
+fn emit_header_rerun_directives(path: &Path) -> Result<(), CestyBuildError> {
     if path.is_file() {
         if is_header(path) {
             println!("cargo:rerun-if-changed={}", path.display());
@@ -286,18 +296,19 @@ fn emit_header_rerun_directives(path: &Path) -> Result<(), BuildError> {
     }
 
     if !path.exists() {
-        return Err(BuildError::MissingIncludePath {
+        return Err(CestyBuildError::IoError {
             path: path.to_path_buf(),
+            cause: std::io::ErrorKind::NotFound.into(),
         });
     }
 
-    for entry in fs::read_dir(path).map_err(|source| BuildError::ReadIncludeDir {
+    for entry in fs::read_dir(path).map_err(|cause| CestyBuildError::IoError {
         path: path.to_path_buf(),
-        source,
+        cause,
     })? {
-        let entry = entry.map_err(|source| BuildError::ReadIncludeDir {
+        let entry = entry.map_err(|cause| CestyBuildError::IoError {
             path: path.to_path_buf(),
-            source,
+            cause,
         })?;
         let entry_path = entry.path();
 
@@ -318,90 +329,44 @@ fn is_header(path: &Path) -> bool {
     )
 }
 
-#[derive(Debug)]
-pub enum BuildError {
-    MissingEnv {
-        name: &'static str,
-    },
-    InvalidManifestPath {
-        path: PathBuf,
-    },
-    ReadManifest {
-        path: PathBuf,
-        source: std::io::Error,
-    },
-    ParseManifest {
-        path: PathBuf,
-        source: toml::de::Error,
-    },
-    InvalidTestConfig {
-        test_name: String,
-        message: String,
-    },
-    MissingIncludePath {
-        path: PathBuf,
-    },
-    ReadIncludeDir {
-        path: PathBuf,
-        source: std::io::Error,
-    },
-    WritePermission {
-        path: PathBuf,
-        source: std::io::Error,
-    },
-}
+#[derive(Error, Debug)]
+pub enum CestyBuildError {
+    #[error("No clang binary found")]
+    ClangNotFound,
 
-impl fmt::Display for BuildError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BuildError::MissingEnv { name } => write!(formatter, "`{name}` is not set"),
-            BuildError::InvalidManifestPath { path } => {
-                write!(formatter, "`{}` has no parent directory", path.display())
-            }
-            BuildError::ReadManifest { path, source } => {
-                write!(formatter, "failed to read `{}`: {source}", path.display())
-            }
-            BuildError::ParseManifest { path, source } => {
-                write!(formatter, "failed to parse `{}`: {source}", path.display())
-            }
-            BuildError::InvalidTestConfig { test_name, message } => {
-                write!(
-                    formatter,
-                    "invalid c_tests config for `{test_name}`: {message}"
-                )
-            }
-            BuildError::MissingIncludePath { path } => {
-                write!(
-                    formatter,
-                    "include path `{}` does not exist",
-                    path.display()
-                )
-            }
-            BuildError::ReadIncludeDir { path, source } => {
-                write!(
-                    formatter,
-                    "failed to read include directory `{}`: {source}",
-                    path.display()
-                )
-            }
-            BuildError::WritePermission { path, source } => {
-                write!(
-                    formatter,
-                    "failed to write to path `{}`: {source}",
-                    path.display()
-                )
-            }
-        }
-    }
-}
+    #[error("No clang++ binary found")]
+    ClangxxNotFound,
 
-impl Error for BuildError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            BuildError::ReadManifest { source, .. } => Some(source),
-            BuildError::ParseManifest { source, .. } => Some(source),
-            BuildError::ReadIncludeDir { source, .. } => Some(source),
-            _ => None,
-        }
-    }
+    #[error("No llvm-config binary found")]
+    LlvmConfigNotFound,
+
+    #[error("LLVM plugin build failed")]
+    PluginBuildFailed,
+
+    #[error("llvm-config failed")]
+    LlvmConfigFailed,
+
+    #[error("OUT_DIR env missing. Not running as part of build")]
+    MissingOutDir,
+
+    #[error("Failed to read manifest {path} ({cause})")]
+    ManifestReadError {
+        path: PathBuf,
+        cause: std::io::Error,
+    },
+
+    #[error("Failed to parse manifest {path} ({cause})")]
+    ManifestParseError {
+        path: PathBuf,
+        cause: toml::de::Error,
+    },
+
+    #[error("Failed to parse manifest test section {section} ({message})")]
+    ManifestTestParseError { section: String, message: String },
+
+    #[error("Io operation failed {path} ({cause})")]
+    IoError {
+        path: PathBuf,
+        cause: std::io::Error,
+    },
 }

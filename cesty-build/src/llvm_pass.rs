@@ -4,16 +4,26 @@ use std::{
     process::Command,
 };
 
-pub fn build_llvm_plugin() -> PathBuf {
+use crate::{
+    CestyBuildError,
+    find_clang::{find_clangxx, find_llvm_config},
+};
+
+pub fn build_llvm_plugin() -> Result<String, CestyBuildError> {
     let src = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("llvm-pass")
         .join("cesty-llvm.cpp");
 
     println!("cargo:rerun-if-changed={}", src.display());
-    let out = PathBuf::from(env::var("OUT_DIR").unwrap()).join("cesty.so");
+    let out_dir = env::var("OUT_DIR").map_err(|_| CestyBuildError::MissingOutDir)?;
+    let out = PathBuf::from(out_dir)
+        .join("cesty.so")
+        .to_str()
+        .unwrap()
+        .to_string();
 
     println!("cargo::rerun-if-env-changed=CLANGXX");
-    let clang_bin = env::var("CLANGXX").unwrap_or("cc".to_string());
+    let clang_bin = find_clangxx()?;
     let status = Command::new(clang_bin)
         .args(["-shared", "-fPIC", "-o"])
         .arg(out.clone())
@@ -25,24 +35,25 @@ pub fn build_llvm_plugin() -> PathBuf {
             "--libs",
             "core",
             "passes",
-        ]))
-        .status()
-        .unwrap();
+        ])?)
+        .status();
+    if status.is_err() {
+        return Err(CestyBuildError::PluginBuildFailed);
+    }
 
-    assert!(status.success());
-    out
+    Ok(out)
 }
 
-fn llvm_config(args: &[&str]) -> Vec<String> {
-    println!("cargo::rerun-if-env-changed=LLVM_CONFIG");
-    let llvm_config_bin = env::var("LLVM_CONFIG").unwrap_or("llvm-config-18".to_string());
-    let output = Command::new(llvm_config_bin).args(args).output().unwrap();
+fn llvm_config(args: &[&str]) -> Result<Vec<String>, CestyBuildError> {
+    let llvm_config_bin = find_llvm_config()?;
+    let output = Command::new(llvm_config_bin)
+        .args(args)
+        .output()
+        .map_err(|_| CestyBuildError::LlvmConfigFailed)?;
 
-    assert!(output.status.success());
-
-    String::from_utf8(output.stdout)
-        .unwrap()
+    Ok(String::from_utf8(output.stdout)
+        .map_err(|_| CestyBuildError::LlvmConfigFailed)?
         .split_whitespace()
         .map(str::to_owned)
-        .collect()
+        .collect())
 }
