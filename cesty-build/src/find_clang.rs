@@ -9,7 +9,7 @@ pub fn find_clang_generic(bin_name: &str, env_name: &str) -> Option<PathBuf> {
         return Some(PathBuf::from(bin));
     }
 
-    for postfix in ["", "-22", "-21", "-20", "-19", "-18"] {
+    for postfix in ["", "-22", "-21", "-20", "-19", "-18", "-17", "-16"] {
         if let Ok(bin) = which(format!("{}{}", bin_name, postfix)) {
             return Some(bin);
         }

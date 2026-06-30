@@ -2,6 +2,17 @@
 
 Cesty is a tool for testing C code using Rust, including building and mock generation.
 
+Supported LLVM/Clang versions
+| Version | Status                       |
+|---------|------------------------------|
+| LLVM 16 | ![llvm 16](./ci/llvm-16.svg) |
+| LLVM 17 | ![llvm 17](./ci/llvm-17.svg) |
+| LLVM 18 | ![llvm 18](./ci/llvm-18.svg) |
+| LLVM 19 | ![llvm 19](./ci/llvm-19.svg) |
+| LLVM 20 | ![llvm 20](./ci/llvm-20.svg) |
+| LLVM 21 | ![llvm 21](./ci/llvm-21.svg) |
+| LLVM 22 | ![llvm 22](./ci/llvm-22.svg) |
+
 ## Build tool
 
 The goal of Cesty is to make it simpler to compile C sources, outside their native environment (both build environment and compile target)
