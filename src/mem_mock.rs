@@ -4,7 +4,6 @@ use std::ptr;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 static MEM_MAP: OnceLock<Mutex<HashMap<usize, u8>>> = OnceLock::new();
-
 static MEM_MOCK_INSTANCE: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[no_mangle]
@@ -56,6 +55,54 @@ pub unsafe extern "C" fn cesty_load(src: *const u8, dst: *mut u8, size: usize) {
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn cesty_memmove(dst: *mut u8, src: *const u8, size: usize) {
+    let mut map = MEM_MAP
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap();
+
+    // Read bytes from src
+    let mut src_bytes = Vec::new();
+    for offset in 0..size {
+        src_bytes.push(match map.entry(src.addr() + offset) {
+            Entry::Vacant(_) => unsafe { ptr::read(src.offset(offset.try_into().unwrap())) },
+            Entry::Occupied(e) => *e.get(),
+        });
+    }
+
+    // Write bytes to dst
+    for offset in 0..size {
+        match map.entry(dst.addr() + offset) {
+            Entry::Vacant(_) => unsafe {
+                ptr::write_unaligned(dst.offset(offset.try_into().unwrap()), src_bytes.remove(0));
+            },
+            Entry::Occupied(mut e) => {
+                e.insert(src_bytes.remove(0));
+            }
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn cesty_memset(dst: *mut u8, value: u8, size: usize) {
+    let mut map = MEM_MAP
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap();
+
+    for offset in 0..size {
+        match map.entry(dst.addr() + offset) {
+            Entry::Vacant(_) => unsafe {
+                ptr::write_unaligned(dst.offset(offset.try_into().unwrap()), value);
+            },
+            Entry::Occupied(mut e) => {
+                e.insert(value);
+            }
+        }
+    }
+}
+
 pub struct Memmock<'a> {
     _instance: MutexGuard<'a, ()>,
 }
@@ -76,11 +123,11 @@ impl<'a> Memmock<'a> {
         let instance = MEM_MOCK_INSTANCE
             .get_or_init(|| Mutex::new(()))
             .lock()
-            .unwrap();
+            .unwrap_or_else(|e| e.into_inner());
         let mut map = MEM_MAP
             .get_or_init(|| Mutex::new(HashMap::new()))
             .lock()
-            .unwrap();
+            .unwrap_or_else(|e| e.into_inner());
 
         map.clear();
         Memmock {

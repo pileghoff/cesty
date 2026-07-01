@@ -19,6 +19,8 @@ public:
   Function &F;
   FunctionCallee LoadFunc;
   FunctionCallee StoreFunc;
+  FunctionCallee MemMoveFunc;
+  FunctionCallee MemSetFunc;
   const DataLayout &DL;
   CestyFuncHandler(Function &F)
       : EntryBuilder(&F.getEntryBlock(), F.getEntryBlock().begin()), F(F),
@@ -37,8 +39,25 @@ public:
                           {EntryBuilder.getPtrTy(), EntryBuilder.getPtrTy(),
                            EntryBuilder.getInt64Ty()},
                           false));
+
+    MemMoveFunc = F.getParent()->getOrInsertFunction(
+        "cesty_memmove",
+        FunctionType::get(Type::getVoidTy(F.getParent()->getContext()),
+                          {EntryBuilder.getPtrTy(), EntryBuilder.getPtrTy(),
+                           EntryBuilder.getInt64Ty()},
+                          false));
+
+    MemSetFunc = F.getParent()->getOrInsertFunction(
+        "cesty_memset",
+        FunctionType::get(Type::getVoidTy(F.getParent()->getContext()),
+                          {EntryBuilder.getPtrTy(), EntryBuilder.getInt64Ty(),
+                           EntryBuilder.getInt64Ty()},
+                          false));
     SmallVector<StoreInst *> Stores;
     SmallVector<LoadInst *> Loads;
+    SmallVector<MemCpyInst *> Copies;
+    SmallVector<MemSetInst *> Sets;
+    SmallVector<MemMoveInst *> Moves;
 
     for (BasicBlock &BB : F) {
       for (Instruction &I : BB) {
@@ -49,6 +68,18 @@ public:
         if (auto *LI = dyn_cast<LoadInst>(&I)) {
           Loads.push_back(LI);
         }
+
+        if (auto *MI = dyn_cast<MemCpyInst>(&I)) {
+          Copies.push_back(MI);
+        }
+
+        if (auto *MM = dyn_cast<MemMoveInst>(&I)) {
+          Moves.push_back(MM);
+        }
+
+        if (auto *MS = dyn_cast<MemSetInst>(&I)) {
+          Sets.push_back(MS);
+        }
       }
     }
 
@@ -58,6 +89,14 @@ public:
 
     for (StoreInst *SI : Stores) {
       handle_store(SI);
+    }
+
+    for (MemCpyInst *MI : Copies) {
+      handle_memcpy(MI);
+    }
+
+    for (MemSetInst *MS : Sets) {
+      handle_memset(MS);
     }
   }
 
@@ -72,6 +111,33 @@ public:
     AllocaInst *Tmp = EntryBuilder.CreateAlloca(Ty, nullptr, "cesty.tmp");
     allocs.push_back({Ty, Tmp});
     return Tmp;
+  }
+
+  void handle_memmove(MemMoveInst *MM) {
+
+    IRBuilder<> Builder(MM);
+    Builder.CreateCall(MemMoveFunc,
+                       {MM->getDest(), MM->getSource(), MM->getLength()});
+
+    MM->eraseFromParent();
+  }
+
+  void handle_memcpy(MemCpyInst *MI) {
+
+    IRBuilder<> Builder(MI);
+    Builder.CreateCall(MemMoveFunc,
+                       {MI->getDest(), MI->getSource(), MI->getLength()});
+
+    MI->eraseFromParent();
+  }
+
+  void handle_memset(MemSetInst *MS) {
+
+    IRBuilder<> Builder(MS);
+    Builder.CreateCall(MemSetFunc,
+                       {MS->getDest(), MS->getValue(), MS->getLength()});
+
+    MS->eraseFromParent();
   }
 
   void handle_load(LoadInst *LI) {
@@ -91,7 +157,8 @@ public:
     Builder.CreateCall(LoadFunc, {Src, Tmp, SizeVal});
 
     // Load from temp
-    LoadInst *Replacement = Builder.CreateLoad(Ty, Tmp, "cesty.loaded");
+    LoadInst *Replacement =
+        Builder.CreateLoad(Ty, Tmp, LI->isVolatile(), "cesty.loaded");
 
     // Redirect uses
     LI->replaceAllUsesWith(Replacement);
@@ -112,7 +179,7 @@ public:
 
     // Write value into temp
     AllocaInst *Tmp = getAlloca(Ty);
-    Builder.CreateStore(Val, Tmp);
+    Builder.CreateStore(Val, Tmp, SI->isVolatile());
 
     // Compute byte size
     uint64_t Size = DL.getTypeStoreSize(Ty);
