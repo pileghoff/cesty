@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc e3fc334365bd41959dd8396543f9aff7d3d66e999d1dbcde6058d94498f67635 # shrinks to ptr = 0, val = 0
+cc a4b67efa148ba91aa29614a3668b658dc4111ed4a1a08c4a280fc65e989f6040 # shrinks to (val, src, dst) = ([0, 0, 0, 0, 0, 0], 1, 0)

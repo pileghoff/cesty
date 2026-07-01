@@ -19,3 +19,5 @@ void memmove_proxy(uint8_t *dst, uint8_t *src, int len) {
 }
 
 void memset_proxy(uint8_t *dst, uint8_t v, int len) { memset(dst, v, len); }
+
+int memcmp_proxy(uint8_t *a, uint8_t *b, int len) { return memcmp(a, b, len); }

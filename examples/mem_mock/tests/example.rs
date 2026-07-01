@@ -17,7 +17,7 @@ fn example_write() {
     unsafe { example_set(0xdead) };
 
     assert_eq!(
-        mem_mock.get(0x8000).unwrap(),
+        mem_mock.get(0x8000, 4).unwrap(),
         (0xdeadu32).to_ne_bytes().into_iter().collect::<Vec<u8>>()
     );
 }

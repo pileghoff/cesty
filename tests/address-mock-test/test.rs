@@ -12,6 +12,7 @@ unsafe extern "C" {
     pub fn memcpy_proxy(dst: *mut u8, src: *mut u8, len: std::ffi::c_int);
     pub fn memmove_proxy(dst: *mut u8, src: *mut u8, len: std::ffi::c_int);
     pub fn memset_proxy(dst: *mut u8, val: u8, len: std::ffi::c_int);
+    pub fn memcmp_proxy(a: *const u8, b: *const u8, len: std::ffi::c_int) -> std::ffi::c_int;
 }
 
 proptest! {
@@ -40,7 +41,7 @@ proptest! {
 
         unsafe { store_int(val, ptr as *const u32) };
 
-        assert_eq!(mem_mock.get(ptr).unwrap(), val.to_ne_bytes());
+        assert_eq!(mem_mock.get(ptr, 4).unwrap(), val.to_ne_bytes());
     }
 }
 
@@ -81,7 +82,7 @@ proptest! {
 
             let addr = pairs[index].0;
             if let Some(value) = pairs[index].1.pop() {
-                if mem_mock.get(addr).is_none() {
+                if mem_mock.get(addr, 4).is_none() {
                     mem_mock.set(addr,  (0u32).to_ne_bytes().into_iter().collect());
                 }
 
@@ -140,10 +141,10 @@ proptest! {
         unsafe { store_byte(val[2], ptr as *const u8, 2) };
         unsafe { store_byte(val[3], ptr as *const u8, 3) };
 
-        assert_eq!(mem_mock.get(ptr).unwrap(), val);
-        assert_eq!(mem_mock.get(ptr+1).unwrap(), val[1..]);
-        assert_eq!(mem_mock.get(ptr+2).unwrap(), val[2..]);
-        assert_eq!(mem_mock.get(ptr+3).unwrap(), val[3..]);
+        assert_eq!(mem_mock.get(ptr, 4).unwrap(), val);
+        assert_eq!(mem_mock.get(ptr+1, 3).unwrap(), val[1..]);
+        assert_eq!(mem_mock.get(ptr+2, 2).unwrap(), val[2..]);
+        assert_eq!(mem_mock.get(ptr+3, 1).unwrap(), val[3..]);
     }
 }
 
@@ -157,13 +158,9 @@ fn non_overlapping_inputs() -> impl Strategy<Value = (Vec<u8>, usize, usize)> {
         .prop_map(|(v, a, gap, flip)| {
             let len = v.len();
 
-            let b = if flip {
-                a.saturating_sub(len + gap)
-            } else {
-                a + len + gap
-            };
+            let b = a.overflowing_add(len + gap).0;
 
-            (v, a, b)
+            if flip { (v, a, b) } else { (v, b, a) }
         })
 }
 proptest! {
@@ -175,12 +172,12 @@ proptest! {
     fn test_memcpy_read_write((val, src, dst) in non_overlapping_inputs()) {
         let mem_mock = Memmock::new();
 
-        mem_mock.set(src, val.clone());
         mem_mock.set(dst, vec![0;val.len()]);
+        mem_mock.set(src, val.clone());
 
         unsafe { memcpy_proxy(dst as *mut u8, src as *mut u8, val.len() as i32) };
 
-        assert_eq!(mem_mock.get(dst).unwrap(), val);
+        assert_eq!(mem_mock.get(dst, val.len()).unwrap(), val);
 
     }
 }
@@ -201,7 +198,7 @@ proptest! {
 
         unsafe { memcpy_proxy(dst as *mut u8, src as *mut u8, val.len() as i32) };
 
-        assert_eq!(mem_mock.get(dst).unwrap(), val);
+        assert_eq!(mem_mock.get(dst, val.len()).unwrap(), val);
 
     }
 }
@@ -219,7 +216,33 @@ proptest! {
 
         unsafe { memset_proxy(addr as *mut u8, val, size as i32) };
 
-        assert_eq!(mem_mock.get(addr).unwrap(), vec![val;size]);
+        assert_eq!(mem_mock.get(addr, size).unwrap(), vec![val;size]);
 
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+            fork: true,
+            .. ProptestConfig::default()
+        })]
+    #[test]
+    fn test_memcmp_same((mut val, a, b) in non_overlapping_inputs()) {
+        let mem_mock = Memmock::new();
+
+        mem_mock.set(a, val.clone());
+        mem_mock.set(b, val.clone());
+
+        assert_eq!(unsafe { memcmp_proxy(a as *const u8, b as *const u8, val.len().try_into().unwrap()) }, 0);
+        assert_eq!(unsafe { memcmp_proxy(a as *const u8, val.as_ptr(), val.len().try_into().unwrap()) }, 0);
+
+
+        mem_mock.set(a, vec![1]);
+        mem_mock.set(b, vec![0]);
+        val[0] = 2;
+
+        assert_eq!(unsafe { memcmp_proxy(a as *const u8, b as *const u8, val.len().try_into().unwrap()) }, 1);
+
+        assert_eq!(unsafe { memcmp_proxy(a as *const u8, val.as_ptr(), val.len().try_into().unwrap()) }, -1);
     }
 }

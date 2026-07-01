@@ -21,6 +21,7 @@ public:
   FunctionCallee StoreFunc;
   FunctionCallee MemMoveFunc;
   FunctionCallee MemSetFunc;
+  FunctionCallee MemCmpFunc;
   const DataLayout &DL;
   CestyFuncHandler(Function &F)
       : EntryBuilder(&F.getEntryBlock(), F.getEntryBlock().begin()), F(F),
@@ -53,11 +54,19 @@ public:
                           {EntryBuilder.getPtrTy(), EntryBuilder.getInt64Ty(),
                            EntryBuilder.getInt64Ty()},
                           false));
+
+    MemCmpFunc = F.getParent()->getOrInsertFunction(
+        "cesty_memcmp",
+        FunctionType::get(EntryBuilder.getInt32Ty(),
+                          {EntryBuilder.getPtrTy(), EntryBuilder.getPtrTy(),
+                           EntryBuilder.getInt64Ty()},
+                          false));
     SmallVector<StoreInst *> Stores;
     SmallVector<LoadInst *> Loads;
     SmallVector<MemCpyInst *> Copies;
     SmallVector<MemSetInst *> Sets;
     SmallVector<MemMoveInst *> Moves;
+    SmallVector<CallInst *> Cmps;
 
     for (BasicBlock &BB : F) {
       for (Instruction &I : BB) {
@@ -80,6 +89,13 @@ public:
         if (auto *MS = dyn_cast<MemSetInst>(&I)) {
           Sets.push_back(MS);
         }
+
+        if (auto *CI = dyn_cast<CallInst>(&I)) {
+          auto *Callee = CI->getCalledFunction();
+          if (Callee && Callee->getName() == "memcmp") {
+            Cmps.push_back(CI);
+          }
+        }
       }
     }
 
@@ -98,6 +114,10 @@ public:
     for (MemSetInst *MS : Sets) {
       handle_memset(MS);
     }
+
+    for (CallInst *CI : Cmps) {
+      handle_memcmp(CI);
+    }
   }
 
   AllocaInst *getAlloca(Type *Ty) {
@@ -111,6 +131,15 @@ public:
     AllocaInst *Tmp = EntryBuilder.CreateAlloca(Ty, nullptr, "cesty.tmp");
     allocs.push_back({Ty, Tmp});
     return Tmp;
+  }
+
+  void handle_memcmp(CallInst *CI) {
+    IRBuilder<> Builder(CI);
+    CI->replaceAllUsesWith(Builder.CreateCall(
+        MemCmpFunc, {CI->getArgOperand(0), CI->getArgOperand(1),
+
+                     CI->getArgOperand(2)}));
+    CI->eraseFromParent();
   }
 
   void handle_memmove(MemMoveInst *MM) {
