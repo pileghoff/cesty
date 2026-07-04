@@ -125,7 +125,7 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), CestyBuil
 
         if let Some(auto_stub_key) = config.get("auto_stub") {
             if auto_stub_key.as_bool().unwrap_or(false) {
-                auto_stub(test_name, &out_dir);
+                auto_stub(test_name, &out_dir)?;
             }
         }
     }
@@ -177,29 +177,34 @@ fn shadow_header(
     Ok(())
 }
 
-fn auto_stub(test_name: &str, out_dir: &OsString) {
+fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<(), CestyBuildError> {
     let mut contents = String::new();
     contents.push_str("void panic(); \n");
     let archive_path = Path::new(out_dir).join(format!("lib{test_name}.a"));
 
     let stub_file = Path::new(out_dir).join(format!("{test_name}_stub.c"));
-    let data = fs::read(archive_path).unwrap();
-    let archive = ArchiveFile::parse(&*data).unwrap();
+    let data = fs::read(archive_path.clone()).map_err(|e| CestyBuildError::IoError {
+        path: archive_path,
+        cause: e,
+    })?;
+    let archive = ArchiveFile::parse(&*data).map_err(|_| CestyBuildError::AutoStubBuildFail)?;
 
     for member in archive.members() {
-        let member = member.unwrap();
+        let member = member.map_err(|_| CestyBuildError::AutoStubBuildFail)?;
 
         let name = String::from_utf8_lossy(member.name());
         eprintln!("member: {name}");
 
-        let bytes = member.data(&*data).unwrap();
+        let bytes = member
+            .data(&*data)
+            .map_err(|_| CestyBuildError::AutoStubBuildFail)?;
 
-        let obj = object::File::parse(bytes).unwrap();
+        let obj = object::File::parse(bytes).map_err(|_| CestyBuildError::AutoStubBuildFail)?;
 
         for sym in obj.symbols() {
             if sym.is_undefined() {
                 if let Ok(name) = sym.name() {
-                    if !name.is_empty() && name != "cesty_store" {
+                    if !name.is_empty() {
                         contents.push_str(&format!(
                             r#"
                             void __attribute__((weak)) {}() {{
@@ -214,10 +219,15 @@ fn auto_stub(test_name: &str, out_dir: &OsString) {
         }
     }
 
-    fs::write(stub_file.clone(), contents).unwrap();
+    fs::write(stub_file.clone(), contents).map_err(|e| CestyBuildError::IoError {
+        path: stub_file.clone(),
+        cause: e,
+    })?;
     let mut build = cc::Build::new();
     build.file(stub_file);
-    build.compile(&format!("lib{test_name}_stub.a"));
+    build
+        .try_compile(&format!("lib{test_name}_stub.a"))
+        .map_err(|_| CestyBuildError::AutoStubBuildFail)
 }
 
 fn string_pairs(
@@ -348,6 +358,9 @@ pub enum CestyBuildError {
 
     #[error("OUT_DIR env missing. Not running as part of build")]
     MissingOutDir,
+
+    #[error("Failed to build auto_stubs")]
+    AutoStubBuildFail,
 
     #[error("Failed to read manifest {path} ({cause})")]
     ManifestReadError {

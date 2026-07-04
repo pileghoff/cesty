@@ -28,3 +28,4 @@ ci-all:
 	just ci 20
 	just ci 21
 	just ci 22
+	just test
