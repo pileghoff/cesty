@@ -13,6 +13,7 @@ use llvm_pass::build_llvm_plugin;
 
 use thiserror::Error;
 
+mod config_getters;
 mod find_clang;
 mod llvm_pass;
 
@@ -74,12 +75,14 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), CestyBuil
                 message: "expected a table".to_owned(),
             })?;
 
-        let sources = string_array(config, test_name, "sources", true)?;
-        let includes = string_array(config, test_name, "includes", false)?;
+        let sources = config_getters::string_array(config, test_name, "sources", true)?;
+        let includes = config_getters::string_array(config, test_name, "includes", false)?;
+        let flags = config_getters::string_array(config, test_name, "flags", false)?;
 
         let mut build = cc::Build::new();
         let clang = find_clang()?;
         build.compiler(clang);
+        build.flags(flags);
 
         for source in &sources {
             let path = manifest_dir.join(source);
@@ -99,13 +102,13 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), CestyBuil
             }
         })?;
 
-        if let Ok(ignore) = string_array(config, test_name, "ignore", false) {
+        if let Ok(ignore) = config_getters::string_array(config, test_name, "ignore", false) {
             for ignore in ignore {
                 create_empty_header(&ignore, &shadow_include_path)?;
             }
         }
 
-        if let Ok(replace) = string_pairs(config, test_name, "replace") {
+        if let Ok(replace) = config_getters::string_pairs(config, test_name, "replace") {
             for (original, fake) in replace {
                 let fake = manifest_dir.join(fake);
                 shadow_header(&fake, &original, &shadow_include_path)?;
@@ -228,72 +231,6 @@ fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<(), CestyBuildError>
     build
         .try_compile(&format!("lib{test_name}_stub.a"))
         .map_err(|_| CestyBuildError::AutoStubBuildFail)
-}
-
-fn string_pairs(
-    config: &toml::map::Map<String, toml::Value>,
-    test_name: &str,
-    key: &'static str,
-) -> Result<Vec<(String, String)>, CestyBuildError> {
-    let Some(value) = config.get(key) else {
-        return Ok(Vec::new());
-    };
-
-    let values = value
-        .as_table()
-        .ok_or_else(|| CestyBuildError::ManifestTestParseError {
-            section: test_name.to_owned(),
-            message: format!("`{key}` must be an array of strings"),
-        })?;
-
-    fn _cleanup(mut s: String) -> String {
-        if s.starts_with('"') && s.ends_with('"') {
-            s.remove(0);
-            s.pop();
-        }
-        s
-    }
-    Ok(values
-        .iter()
-        .map(|value| (_cleanup(value.0.to_string()), _cleanup(value.1.to_string())))
-        .collect())
-}
-
-fn string_array(
-    config: &toml::map::Map<String, toml::Value>,
-    test_name: &str,
-    key: &'static str,
-    required: bool,
-) -> Result<VecDeque<String>, CestyBuildError> {
-    let Some(value) = config.get(key) else {
-        if required {
-            return Err(CestyBuildError::ManifestTestParseError {
-                section: test_name.to_owned(),
-                message: format!("missing required `{key}` array"),
-            });
-        }
-
-        return Ok(VecDeque::new());
-    };
-
-    let values = value
-        .as_array()
-        .ok_or_else(|| CestyBuildError::ManifestTestParseError {
-            section: test_name.to_owned(),
-            message: format!("`{key}` must be an array of strings"),
-        })?;
-
-    values
-        .iter()
-        .map(|value| {
-            value.as_str().map(ToOwned::to_owned).ok_or_else(|| {
-                CestyBuildError::ManifestTestParseError {
-                    section: test_name.to_owned(),
-                    message: format!("`{key}` must be an array of strings"),
-                }
-            })
-        })
-        .collect()
 }
 
 fn emit_header_rerun_directives(path: &Path) -> Result<(), CestyBuildError> {

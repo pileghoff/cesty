@@ -1,6 +1,10 @@
 #include "gpio_driver.h"
 #include "arch/types.h"
 
+#ifndef GPIO_MODULE
+#error "Gpio module not defined"
+#endif
+
 extern void hal_gpio_write(int pin, int value);
 extern int hal_gpio_read(int pin);
 

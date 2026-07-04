@@ -18,4 +18,5 @@ cesty-build = { path = "../../cesty-build" }
 sources = ["c/gpio_driver.c"]
 includes = ["include"]
 ignore = ["arch/types.h"]
+flags = "-DGPIO_MODULE"
 auto_stub = true
