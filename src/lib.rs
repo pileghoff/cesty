@@ -5,7 +5,7 @@ pub use lazy_static::lazy_static;
 pub mod mem_mock;
 
 #[no_mangle]
-extern "C" fn panic() {
+extern "C" fn cesty_panic() {
     panic!();
 }
 

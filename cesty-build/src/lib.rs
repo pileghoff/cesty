@@ -1,18 +1,14 @@
-use std::{
-    collections::VecDeque,
-    env,
-    ffi::OsString,
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{env, ffi::OsString, fs, path::Path};
 
-use object::{Object, ObjectSymbol, read::archive::ArchiveFile};
+use object::{
+    Object, ObjectSymbol,
+    read::archive::ArchiveFile,
+};
 
 use find_clang::find_clang;
 use llvm_pass::build_llvm_plugin;
 
-use thiserror::Error;
-
+use miette::{Context, IntoDiagnostic, Result, ensure};
 mod config_getters;
 mod find_clang;
 mod llvm_pass;
@@ -34,31 +30,32 @@ pub fn build_c_tests() {
 }
 
 /// Fallible variant of [`build_c_tests`].
-pub fn try_build_c_tests() -> Result<(), CestyBuildError> {
+pub fn try_build_c_tests() -> Result<()> {
     let manifest_path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap()).join("Cargo.toml");
 
     build_c_tests_from_manifest(&manifest_path)
 }
 
-fn get_manifest(manifest_path: &Path) -> Result<toml::Value, CestyBuildError> {
-    let manifest =
-        fs::read_to_string(manifest_path).map_err(|cause| CestyBuildError::ManifestReadError {
-            path: manifest_path.to_path_buf(),
-            cause,
-        })?;
-    let manifest =
-        manifest
-            .parse::<toml::Value>()
-            .map_err(|cause| CestyBuildError::ManifestParseError {
-                path: manifest_path.to_path_buf(),
-                cause,
-            })?;
+fn get_manifest(manifest_path: &Path) -> Result<toml::Value> {
+    let manifest = fs::read_to_string(manifest_path)
+        .into_diagnostic()
+        .wrap_err(format!(
+            "Failed to read Cargo.toml at '{}'. Check that the file exists and is readable.",
+            manifest_path.display()
+        ))?;
+    let manifest = manifest
+        .parse::<toml::Value>()
+        .into_diagnostic()
+        .wrap_err(format!(
+            "Failed to parse Cargo.toml at '{}' as TOML. Check the TOML syntax in the file.",
+            manifest_path.display()
+        ))?;
 
     Ok(manifest)
 }
 
 /// Builds C test libraries from an explicit manifest path.
-pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), CestyBuildError> {
+pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<()> {
     let manifest = get_manifest(manifest_path)?;
 
     let manifest_dir = manifest_path.parent().unwrap();
@@ -68,12 +65,13 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), CestyBuil
     };
 
     for (test_name, config) in c_tests {
-        let config = config
-            .as_table()
-            .ok_or_else(|| CestyBuildError::ManifestTestParseError {
-                section: test_name.clone(),
-                message: "expected a table".to_owned(),
-            })?;
+        let config = config.as_table().wrap_err(format!(
+            "Test configuration '{}' must be a table (object) in Cargo.toml [cesty.{}], but found: {}. \
+             Each test should be: [cesty.test_name]\n  sources = [...]\n  # ... other fields",
+            test_name,
+            test_name,
+            config.type_str()
+        ))?;
 
         let sources = config_getters::string_array(config, test_name, "sources", true)?;
         let includes = config_getters::string_array(config, test_name, "includes", false)?;
@@ -95,29 +93,43 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), CestyBuil
 
         build.include(&shadow_include_path);
         let _ = fs::remove_dir_all(&shadow_include_path);
-        fs::create_dir_all(&shadow_include_path).map_err(|e: std::io::Error| {
-            CestyBuildError::IoError {
-                path: shadow_include_path.clone(),
-                cause: e,
-            }
-        })?;
+        fs::create_dir_all(&shadow_include_path)
+            .into_diagnostic()
+            .wrap_err(format!(
+                "Failed to create shadow include directory at '{}'. \
+                 Shadow includes are temporary headers used to mock or replace system headers during compilation.",
+                shadow_include_path.display()
+            ))?;
 
         if let Ok(ignore) = config_getters::string_array(config, test_name, "ignore", false) {
             for ignore in ignore {
-                create_empty_header(&ignore, &shadow_include_path)?;
+                create_empty_header(&ignore, &shadow_include_path)
+                    .context(format!(
+                        "Failed while processing 'ignore' configuration for header '{}' in test '{}'",
+                        ignore, test_name
+                    ))?;
             }
         }
 
         if let Ok(replace) = config_getters::string_pairs(config, test_name, "replace") {
             for (original, fake) in replace {
                 let fake = manifest_dir.join(fake);
-                shadow_header(&fake, &original, &shadow_include_path)?;
+                shadow_header(&fake, &original, &shadow_include_path)
+                    .context(format!(
+                        "Failed to process 'replace' configuration in test '{}': replacing '{}' with '{}'",
+                        test_name, original, fake.display()
+                    ))?;
             }
         }
 
         for include in &includes {
             let path = manifest_dir.join(include);
-            emit_header_rerun_directives(&path)?;
+            emit_header_rerun_directives(&path)
+                .context(format!(
+                    "Failed to process include path '{}' from 'includes' configuration in test '{}'",
+                    path.display(),
+                    test_name
+                ))?;
             build.include(path);
         }
 
@@ -136,18 +148,25 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<(), CestyBuil
     Ok(())
 }
 
-fn create_empty_header(
-    header_name: &str,
-    shadow_include_path: &Path,
-) -> Result<(), CestyBuildError> {
+fn create_empty_header(header_name: &str, shadow_include_path: &Path) -> Result<()> {
     let path = Path::new(&shadow_include_path).join(header_name);
 
-    if path.parent().unwrap() != shadow_include_path {
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let parent = path.parent().expect("Internal error: path parent is always valid");
+    if parent != shadow_include_path {
+        fs::create_dir_all(parent)
+            .into_diagnostic()
+            .wrap_err(format!(
+                "Failed to create directory structure for shadow header at {}",
+                parent.display()
+            ))?
     }
 
     fs::File::create(path.clone())
-        .map_err(|e: std::io::Error| CestyBuildError::IoError { path, cause: e })?;
+        .into_diagnostic()
+        .wrap_err(format!(
+            "Failed to create empty header file at {}",
+            path.display()
+        ))?;
 
     Ok(())
 }
@@ -156,54 +175,70 @@ fn shadow_header(
     fake: &Path,
     header_name_original: &str,
     shadow_include_path: &Path,
-) -> Result<(), CestyBuildError> {
+) -> Result<()> {
     let shadow_include = Path::new(&shadow_include_path).join(header_name_original);
+    let shadow_parent = shadow_include.parent().expect("Internal error: path parent is always valid");
 
-    if let Some(shadow_parent) = shadow_include.parent() {
-        if shadow_parent != shadow_include_path {
-            fs::create_dir_all(shadow_include.parent().ok_or(CestyBuildError::IoError {
-                path: shadow_include.to_path_buf(),
-                cause: std::io::ErrorKind::NotFound.into(),
-            })?)
-            .map_err(|cause| CestyBuildError::IoError {
-                path: shadow_parent.to_path_buf(),
-                cause,
-            })?;
-        }
+    if shadow_parent != shadow_include_path {
+        fs::create_dir_all(shadow_parent)
+            .into_diagnostic()
+            .wrap_err(format!(
+                "Failed to create directory structure for shadow header at {}",
+                shadow_parent.display()
+            ))?;
     }
 
-    fs::copy(fake, shadow_include).map_err(|cause| CestyBuildError::IoError {
-        path: fake.to_path_buf(),
-        cause,
-    })?;
-
+    fs::copy(fake, shadow_include.clone())
+        .into_diagnostic()
+        .wrap_err(format!(
+            "Failed to copy header from {} to {}",
+            fake.display(),
+            shadow_include.display()
+        ))?;
     Ok(())
 }
 
-fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<(), CestyBuildError> {
+fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<()> {
     let mut contents = String::new();
-    contents.push_str("void panic(); \n");
+    contents.push_str("void cesty_panic(); \n");
     let archive_path = Path::new(out_dir).join(format!("lib{test_name}.a"));
 
     let stub_file = Path::new(out_dir).join(format!("{test_name}_stub.c"));
-    let data = fs::read(archive_path.clone()).map_err(|e| CestyBuildError::IoError {
-        path: archive_path,
-        cause: e,
-    })?;
-    let archive = ArchiveFile::parse(&*data).map_err(|_| CestyBuildError::AutoStubBuildFail)?;
-
+    let data = fs::read(archive_path.clone())
+        .into_diagnostic()
+        .wrap_err(format!(
+            "Failed to read compiled test library archive at {}. This archive should have been created by the C compiler.",
+            archive_path.display()
+        ))?;
+    let archive = ArchiveFile::parse(&*data)
+        .into_diagnostic()
+        .wrap_err(format!(
+            "Failed to parse the compiled test library archive at {}. The archive may be corrupted or in an unsupported format.",
+            archive_path.display()
+        ))?;
     for member in archive.members() {
-        let member = member.map_err(|_| CestyBuildError::AutoStubBuildFail)?;
-
+        let member = member
+            .into_diagnostic()
+            .context(format!(
+                "Failed to read archive member while processing test library '{}' for auto-stub generation",
+                test_name
+            ))?;
         let name = String::from_utf8_lossy(member.name());
-        eprintln!("member: {name}");
 
         let bytes = member
             .data(&*data)
-            .map_err(|_| CestyBuildError::AutoStubBuildFail)?;
+            .into_diagnostic()
+            .context(format!(
+                "Failed to extract data from archive member '{}' while processing test library '{}' for auto-stub generation",
+                name, test_name
+            ))?;
 
-        let obj = object::File::parse(bytes).map_err(|_| CestyBuildError::AutoStubBuildFail)?;
-
+        let obj = object::File::parse(bytes)
+            .into_diagnostic()
+            .context(format!(
+                "Failed to parse object file from archive member '{}' in test library '{}' for auto-stub generation",
+                name, test_name
+            ))?;
         for sym in obj.symbols() {
             if sym.is_undefined() {
                 if let Ok(name) = sym.name() {
@@ -211,7 +246,7 @@ fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<(), CestyBuildError>
                         contents.push_str(&format!(
                             r#"
                             void __attribute__((weak)) {}() {{
-                                panic();
+                                cesty_panic();
                             }}
                             "#,
                             name
@@ -222,18 +257,26 @@ fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<(), CestyBuildError>
         }
     }
 
-    fs::write(stub_file.clone(), contents).map_err(|e| CestyBuildError::IoError {
-        path: stub_file.clone(),
-        cause: e,
-    })?;
+    fs::write(stub_file.clone(), contents)
+        .into_diagnostic()
+        .wrap_err(format!(
+            "Failed to write auto-generated stub file at {}. Check that the output directory is writable.",
+            stub_file.display()
+        ))?;
     let mut build = cc::Build::new();
     build.file(stub_file);
     build
         .try_compile(&format!("lib{test_name}_stub.a"))
-        .map_err(|_| CestyBuildError::AutoStubBuildFail)
+        .into_diagnostic()
+        .wrap_err(format!(
+            "Failed to compile auto-generated stubs for test '{}'. \
+             This file provides weak implementations for functions that the test library references but aren't available. \
+             Check the compiler error above for details.",
+            test_name
+        ))
 }
 
-fn emit_header_rerun_directives(path: &Path) -> Result<(), CestyBuildError> {
+fn emit_header_rerun_directives(path: &Path) -> Result<()> {
     if path.is_file() {
         if is_header(path) {
             println!("cargo:rerun-if-changed={}", path.display());
@@ -242,21 +285,27 @@ fn emit_header_rerun_directives(path: &Path) -> Result<(), CestyBuildError> {
         return Ok(());
     }
 
-    if !path.exists() {
-        return Err(CestyBuildError::IoError {
-            path: path.to_path_buf(),
-            cause: std::io::ErrorKind::NotFound.into(),
-        });
-    }
+    ensure!(
+        path.exists(),
+        format!(
+            "Header directory '{}' does not exist. Check that the path specified in the 'includes' configuration is correct.",
+            path.display()
+        )
+    );
 
-    for entry in fs::read_dir(path).map_err(|cause| CestyBuildError::IoError {
-        path: path.to_path_buf(),
-        cause,
-    })? {
-        let entry = entry.map_err(|cause| CestyBuildError::IoError {
-            path: path.to_path_buf(),
-            cause,
-        })?;
+    for entry in fs::read_dir(path)
+        .into_diagnostic()
+        .wrap_err(format!(
+            "Failed to read header directory '{}' to scan for changes",
+            path.display()
+        ))?
+    {
+        let entry = entry
+            .into_diagnostic()
+            .wrap_err(format!(
+                "Failed to read entry while scanning header directory '{}'",
+                path.display()
+            ))?;
         let entry_path = entry.path();
 
         if entry_path.is_dir() {
@@ -274,49 +323,4 @@ fn is_header(path: &Path) -> bool {
         path.extension().and_then(|extension| extension.to_str()),
         Some("h" | "hh" | "hpp" | "hxx")
     )
-}
-
-#[derive(Error, Debug)]
-pub enum CestyBuildError {
-    #[error("No clang binary found")]
-    ClangNotFound,
-
-    #[error("No clang++ binary found")]
-    ClangxxNotFound,
-
-    #[error("No llvm-config binary found")]
-    LlvmConfigNotFound,
-
-    #[error("LLVM plugin build failed")]
-    PluginBuildFailed,
-
-    #[error("llvm-config failed")]
-    LlvmConfigFailed,
-
-    #[error("OUT_DIR env missing. Not running as part of build")]
-    MissingOutDir,
-
-    #[error("Failed to build auto_stubs")]
-    AutoStubBuildFail,
-
-    #[error("Failed to read manifest {path} ({cause})")]
-    ManifestReadError {
-        path: PathBuf,
-        cause: std::io::Error,
-    },
-
-    #[error("Failed to parse manifest {path} ({cause})")]
-    ManifestParseError {
-        path: PathBuf,
-        cause: toml::de::Error,
-    },
-
-    #[error("Failed to parse manifest test section {section} ({message})")]
-    ManifestTestParseError { section: String, message: String },
-
-    #[error("Io operation failed {path} ({cause})")]
-    IoError {
-        path: PathBuf,
-        cause: std::io::Error,
-    },
 }

@@ -1,22 +1,24 @@
 use std::collections::VecDeque;
 
-use crate::CestyBuildError;
+use miette::{Context, Result, bail};
 
 pub fn string(
     config: &toml::map::Map<String, toml::Value>,
     test_name: &str,
     key: &'static str,
-) -> Result<String, CestyBuildError> {
+) -> Result<String> {
     let Some(value) = config.get(key) else {
         return Ok(String::new());
     };
 
     Ok(value
         .as_str()
-        .ok_or_else(|| CestyBuildError::ManifestTestParseError {
-            section: test_name.to_owned(),
-            message: format!("`{key}` must be a string"),
-        })?
+        .wrap_err(format!(
+            "Field '{}' in test '{}' must be a string, but found: {}",
+            key,
+            test_name,
+            value.type_str()
+        ))?
         .to_string())
 }
 
@@ -24,17 +26,17 @@ pub fn string_pairs(
     config: &toml::map::Map<String, toml::Value>,
     test_name: &str,
     key: &'static str,
-) -> Result<Vec<(String, String)>, CestyBuildError> {
+) -> Result<Vec<(String, String)>> {
     let Some(value) = config.get(key) else {
         return Ok(Vec::new());
     };
 
-    let values = value
-        .as_table()
-        .ok_or_else(|| CestyBuildError::ManifestTestParseError {
-            section: test_name.to_owned(),
-            message: format!("`{key}` must be an array of strings"),
-        })?;
+    let values = value.as_table().wrap_err(format!(
+        "Field '{}' in test '{}' must be a table (map) of key-value pairs, but found: {}",
+        key,
+        test_name,
+        value.type_str()
+    ))?;
 
     fn _cleanup(mut s: String) -> String {
         if s.starts_with('"') && s.ends_with('"') {
@@ -54,13 +56,17 @@ pub fn string_array(
     test_name: &str,
     key: &'static str,
     required: bool,
-) -> Result<VecDeque<String>, CestyBuildError> {
+) -> Result<VecDeque<String>> {
     let Some(value) = config.get(key) else {
         if required {
-            return Err(CestyBuildError::ManifestTestParseError {
-                section: test_name.to_owned(),
-                message: format!("missing required `{key}` array"),
-            });
+            bail!(
+                "Required field '{}' is missing from test configuration '{}'. \
+                 This field should contain a list of source file paths to compile for this test. \
+                 Example: {} = [\"src/test.c\"]",
+                key,
+                test_name,
+                key
+            );
         }
 
         return Ok(VecDeque::new());
@@ -69,22 +75,26 @@ pub fn string_array(
         return Ok(VecDeque::from(vec![value.to_string()]));
     }
 
-    let values = value
-        .as_array()
-        .ok_or_else(|| CestyBuildError::ManifestTestParseError {
-            section: test_name.to_owned(),
-            message: format!("`{key}` must be an array of strings"),
-        })?;
+    let values = value.as_array().wrap_err(format!(
+        "Field '{}' in test '{}' must be either a string or array of strings, but found: {}",
+        key,
+        test_name,
+        value.type_str()
+    ))?;
 
     values
         .iter()
         .map(|value| {
-            value.as_str().map(ToOwned::to_owned).ok_or_else(|| {
-                CestyBuildError::ManifestTestParseError {
-                    section: test_name.to_owned(),
-                    message: format!("`{key}` must be an array of strings"),
-                }
-            })
+            value
+                .as_str()
+                .wrap_err(format!(
+                    "All values in '{}::{}' must be strings, but found a {}: {}",
+                    test_name,
+                    key,
+                    value.type_str(),
+                    value.to_string()
+                ))
+                .map(|v| v.to_string())
         })
         .collect()
 }
