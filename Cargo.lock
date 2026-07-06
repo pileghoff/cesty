@@ -85,7 +85,7 @@ checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
 
 [[package]]
 name = "cesty"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cesty-macro",
  "lazy_static",
@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "cesty-build"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "miette",
  "object 0.39.1",
@@ -103,7 +103,7 @@ dependencies = [
 
 [[package]]
 name = "cesty-gpio-example"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "cesty",
  "cesty-build",
@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "cesty-macro"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "quote",
  "syn",

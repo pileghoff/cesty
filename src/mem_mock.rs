@@ -41,32 +41,42 @@ unsafe fn write_mem(dst: *mut u8, val: Vec<u8>) {
     }
 }
 
-#[no_mangle]
+/// # Safety
+/// Should never be called from Rust code.
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cesty_store(dst: *mut u8, src: *const u8, size: usize) {
     let bytes = unsafe { std::slice::from_raw_parts(src, size).to_vec() };
-    write_mem(dst, bytes);
+    unsafe { write_mem(dst, bytes) };
 }
 
-#[no_mangle]
+/// # Safety
+/// Should never be called from Rust code.
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cesty_load(src: *const u8, dst: *mut u8, size: usize) {
-    let bytes = load_mem(src, size);
-    ptr::copy_nonoverlapping(bytes.as_ptr(), dst, size);
+    let bytes = unsafe { load_mem(src, size) };
+    unsafe { ptr::copy_nonoverlapping(bytes.as_ptr(), dst, size) };
 }
 
-#[no_mangle]
+/// # Safety
+/// Should never be called from Rust code.
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cesty_memmove(dst: *mut u8, src: *const u8, size: usize) {
-    write_mem(dst, load_mem(src, size));
+    unsafe { write_mem(dst, load_mem(src, size)) };
 }
 
-#[no_mangle]
+/// # Safety
+/// Should never be called from Rust code.
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cesty_memset(dst: *mut u8, value: u8, size: usize) {
-    write_mem(dst, vec![value; size]);
+    unsafe { write_mem(dst, vec![value; size]) };
 }
 
-#[no_mangle]
+/// # Safety
+/// Should never be called from Rust code.
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cesty_memcmp(a: *const u8, b: *const u8, size: usize) -> std::ffi::c_int {
-    let a_val = load_mem(a, size);
-    let b_val = load_mem(b, size);
+    let a_val = unsafe { load_mem(a, size) };
+    let b_val = unsafe { load_mem(b, size) };
 
     for (a, b) in a_val.iter().zip(b_val) {
         if *a < b {

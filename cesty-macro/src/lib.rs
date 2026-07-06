@@ -2,8 +2,8 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    parse_macro_input, parse_str, punctuated::Punctuated, token::Comma, FnArg, Ident, Signature,
-    Type,
+    FnArg, Ident, Signature, Type, parse_macro_input, parse_str, punctuated::Punctuated,
+    token::Comma,
 };
 
 fn get_names(in_sig: &Punctuated<FnArg, Comma>) -> Punctuated<Ident, Comma> {
@@ -59,8 +59,8 @@ pub fn define_mock(input: TokenStream) -> TokenStream {
                 std::sync::Mutex::new(cesty::FunctionMockInner::new());
         }
 
-        #[no_mangle]
-        extern "C" fn #extern_name(#in_sig) -> #out_sig {
+        #[unsafe(no_mangle)]
+        unsafe extern "C" fn #extern_name(#in_sig) -> #out_sig {
             let mut cesty_mutex = #static_mock_name.lock().unwrap();
             cesty_mutex.call_history.push( (#in_names) );
             cesty_mutex.get_next_return()

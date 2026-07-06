@@ -4,7 +4,7 @@ pub use cesty_macro::mock;
 pub use lazy_static::lazy_static;
 pub mod mem_mock;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn cesty_panic() {
     panic!();
 }
