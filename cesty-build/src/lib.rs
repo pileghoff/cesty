@@ -1,14 +1,12 @@
 use std::{env, ffi::OsString, fs, path::Path};
 
-use object::{
-    Object, ObjectSymbol,
-    read::archive::ArchiveFile,
-};
+use object::{Object, ObjectSymbol, read::archive::ArchiveFile};
 
 use find_clang::find_clang;
 use llvm_pass::build_llvm_plugin;
 
 use miette::{Context, IntoDiagnostic, Result, ensure};
+mod cc;
 mod config_getters;
 mod find_clang;
 mod llvm_pass;
@@ -25,7 +23,8 @@ mod llvm_pass;
 /// ```
 pub fn build_c_tests() {
     if let Err(error) = try_build_c_tests() {
-        panic!("cesty C test build failed: {error}");
+        eprint!("{:?}", error);
+        std::process::exit(-1);
     }
 }
 
@@ -103,11 +102,10 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<()> {
 
         if let Ok(ignore) = config_getters::string_array(config, test_name, "ignore", false) {
             for ignore in ignore {
-                create_empty_header(&ignore, &shadow_include_path)
-                    .context(format!(
-                        "Failed while processing 'ignore' configuration for header '{}' in test '{}'",
-                        ignore, test_name
-                    ))?;
+                create_empty_header(&ignore, &shadow_include_path).context(format!(
+                    "Failed while processing 'ignore' configuration for header '{}' in test '{}'",
+                    ignore, test_name
+                ))?;
             }
         }
 
@@ -124,19 +122,20 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<()> {
 
         for include in &includes {
             let path = manifest_dir.join(include);
-            emit_header_rerun_directives(&path)
-                .context(format!(
-                    "Failed to process include path '{}' from 'includes' configuration in test '{}'",
-                    path.display(),
-                    test_name
-                ))?;
+            emit_header_rerun_directives(&path).context(format!(
+                "Failed to process include path '{}' from 'includes' configuration in test '{}'",
+                path.display(),
+                test_name
+            ))?;
             build.include(path);
         }
 
         build.flag("-O0");
         let llvm_plugin = build_llvm_plugin()?;
         build.flag(format!("-fpass-plugin={}", llvm_plugin));
-        build.compile(test_name);
+        build
+            .try_compile(test_name)
+            .wrap_err(format!("Failed to build C sources for test {test_name}"))?;
 
         if let Some(auto_stub_key) = config.get("auto_stub") {
             if auto_stub_key.as_bool().unwrap_or(false) {
@@ -151,7 +150,9 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<()> {
 fn create_empty_header(header_name: &str, shadow_include_path: &Path) -> Result<()> {
     let path = Path::new(&shadow_include_path).join(header_name);
 
-    let parent = path.parent().expect("Internal error: path parent is always valid");
+    let parent = path
+        .parent()
+        .expect("Internal error: path parent is always valid");
     if parent != shadow_include_path {
         fs::create_dir_all(parent)
             .into_diagnostic()
@@ -177,7 +178,9 @@ fn shadow_header(
     shadow_include_path: &Path,
 ) -> Result<()> {
     let shadow_include = Path::new(&shadow_include_path).join(header_name_original);
-    let shadow_parent = shadow_include.parent().expect("Internal error: path parent is always valid");
+    let shadow_parent = shadow_include
+        .parent()
+        .expect("Internal error: path parent is always valid");
 
     if shadow_parent != shadow_include_path {
         fs::create_dir_all(shadow_parent)
@@ -267,7 +270,6 @@ fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<()> {
     build.file(stub_file);
     build
         .try_compile(&format!("lib{test_name}_stub.a"))
-        .into_diagnostic()
         .wrap_err(format!(
             "Failed to compile auto-generated stubs for test '{}'. \
              This file provides weak implementations for functions that the test library references but aren't available. \
@@ -293,19 +295,14 @@ fn emit_header_rerun_directives(path: &Path) -> Result<()> {
         )
     );
 
-    for entry in fs::read_dir(path)
-        .into_diagnostic()
-        .wrap_err(format!(
-            "Failed to read header directory '{}' to scan for changes",
+    for entry in fs::read_dir(path).into_diagnostic().wrap_err(format!(
+        "Failed to read header directory '{}' to scan for changes",
+        path.display()
+    ))? {
+        let entry = entry.into_diagnostic().wrap_err(format!(
+            "Failed to read entry while scanning header directory '{}'",
             path.display()
-        ))?
-    {
-        let entry = entry
-            .into_diagnostic()
-            .wrap_err(format!(
-                "Failed to read entry while scanning header directory '{}'",
-                path.display()
-            ))?;
+        ))?;
         let entry_path = entry.path();
 
         if entry_path.is_dir() {
