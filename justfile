@@ -29,3 +29,9 @@ ci-all:
 	just ci 21
 	just ci 22
 	just test
+
+
+publish:
+	cd cesty-macro && cargo publish
+	cd cesty-build && cargo publish
+	cargo publish
