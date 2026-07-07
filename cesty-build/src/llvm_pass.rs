@@ -39,7 +39,7 @@ pub fn build_llvm_plugin() -> Result<String> {
         ])?)
         .status();
     ensure!(
-        !status.is_err(),
+        status.is_ok(),
         "Failed to build the Cesty LLVM plugin. The plugin is a shared library that extends the LLVM compiler. \
          Check that clang++ and llvm-config are properly installed and compatible. \
          See compiler output above for details."

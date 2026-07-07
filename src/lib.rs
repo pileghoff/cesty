@@ -21,6 +21,16 @@ pub struct FunctionMockInner<Tin: Sized + 'static + Clone, Tout: Sized + 'static
     pub default_ret_val: Option<Tout>,
 }
 
+impl<Tin, Tout> Default for FunctionMockInner<Tin, Tout>
+where
+    Tin: Sized + 'static + Clone,
+    Tout: Sized + 'static + Clone,
+ {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<Tin, Tout> FunctionMockInner<Tin, Tout>
 where
     Tin: Sized + 'static + Clone,

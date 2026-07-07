@@ -137,11 +137,10 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<()> {
             .try_compile(test_name)
             .wrap_err(format!("Failed to build C sources for test {test_name}"))?;
 
-        if let Some(auto_stub_key) = config.get("auto_stub") {
-            if auto_stub_key.as_bool().unwrap_or(false) {
+        if let Some(auto_stub_key) = config.get("auto_stub")
+            && auto_stub_key.as_bool().unwrap_or(false) {
                 auto_stub(test_name, &out_dir)?;
             }
-        }
     }
 
     Ok(())
@@ -243,9 +242,9 @@ fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<()> {
                 name, test_name
             ))?;
         for sym in obj.symbols() {
-            if sym.is_undefined() {
-                if let Ok(name) = sym.name() {
-                    if !name.is_empty() {
+            if sym.is_undefined()
+                && let Ok(name) = sym.name()
+                    && !name.is_empty() {
                         contents.push_str(&format!(
                             r#"
                             void __attribute__((weak)) {}() {{
@@ -255,8 +254,6 @@ fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<()> {
                             name
                         ));
                     }
-                }
-            }
         }
     }
 

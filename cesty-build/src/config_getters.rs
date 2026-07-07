@@ -92,7 +92,7 @@ pub fn string_array(
                     test_name,
                     key,
                     value.type_str(),
-                    value.to_string()
+                    value
                 ))
                 .map(|v| v.to_string())
         })
