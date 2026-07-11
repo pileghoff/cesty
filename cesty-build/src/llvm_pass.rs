@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::find_clang::{find_clangxx, find_llvm_config};
-use miette::{Context, IntoDiagnostic, Result, ensure};
+use miette::{Context, IntoDiagnostic, MietteDiagnostic, Result};
 
 pub fn build_llvm_plugin() -> Result<String> {
     let src = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -25,25 +25,40 @@ pub fn build_llvm_plugin() -> Result<String> {
 
     println!("cargo::rerun-if-env-changed=CLANGXX");
     let clang_bin = find_clangxx()?;
-    let status = Command::new(clang_bin)
-        .args(["-shared", "-fPIC", "-o"])
-        .arg(out.clone())
-        .arg(src)
-        .args(llvm_config(&[
-            "--cxxflags",
-            "--ldflags",
-            "--system-libs",
-            "--libs",
-            "core",
-            "passes",
-        ])?)
-        .status();
-    ensure!(
-        status.is_ok(),
+    let mut cmd = Command::new(clang_bin);
+
+    cmd.args(["-shared", "-fPIC", "-o"]);
+    cmd.arg(out.clone());
+    cmd.arg(src);
+    let llvm_args = llvm_config(&[
+        "--cxxflags",
+        "--ldflags",
+        "--system-libs",
+        "--libs",
+        "core",
+        "passes",
+    ])?;
+    cmd.args(llvm_args);
+    let output = cmd
+        .output()
+        .into_diagnostic()
+        .wrap_err("Failed to launch clangxx")?;
+    let status = output.status;
+
+    if !status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(MietteDiagnostic::new(format!(
         "Failed to build the Cesty LLVM plugin. The plugin is a shared library that extends the LLVM compiler. \
          Check that clang++ and llvm-config are properly installed and compatible. \
          See compiler output above for details."
-    );
+            ))
+            .with_help(format!(
+                "Command:\n  {:?}\n\nStdout:\n{}\nStderr:\n{}",
+                cmd, stdout, stderr
+            ))
+            .into());
+    }
 
     Ok(out)
 }
