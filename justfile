@@ -13,7 +13,7 @@ build-docker target:
 	docker build --build-arg LLVM_VERSION={{target}} -t llvm-container:{{target}} ./ci
 
 docker-run target command: (build-docker target)
-	docker run --rm -it -v "$PWD":/work -w /work llvm-container:{{target}}  {{command}}
+	docker run --rm -it -v "$PWD":/work -w /work llvm-container:{{target}}  bash -c "{{command}}"
 
 ci llvm:
 	wget https://img.shields.io/badge/build-failing-red?style=for-the-badge -O ./ci/llvm-{{llvm}}.svg
