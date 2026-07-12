@@ -138,9 +138,10 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<()> {
             .wrap_err(format!("Failed to build C sources for test {test_name}"))?;
 
         if let Some(auto_stub_key) = config.get("auto_stub")
-            && auto_stub_key.as_bool().unwrap_or(false) {
-                auto_stub(test_name, &out_dir)?;
-            }
+            && auto_stub_key.as_bool().unwrap_or(false)
+        {
+            auto_stub(test_name, &out_dir)?;
+        }
     }
 
     Ok(())
@@ -202,7 +203,7 @@ fn shadow_header(
 
 fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<()> {
     let mut contents = String::new();
-    contents.push_str("void cesty_panic(); \n");
+    contents.push_str("void cesty_panic(const char*); \n");
     let archive_path = Path::new(out_dir).join(format!("lib{test_name}.a"));
 
     let stub_file = Path::new(out_dir).join(format!("{test_name}_stub.c"));
@@ -244,16 +245,17 @@ fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<()> {
         for sym in obj.symbols() {
             if sym.is_undefined()
                 && let Ok(name) = sym.name()
-                    && !name.is_empty() {
-                        contents.push_str(&format!(
-                            r#"
+                && !name.is_empty()
+            {
+                contents.push_str(&format!(
+                    r#"
                             void __attribute__((weak)) {}() {{
-                                cesty_panic();
+                                cesty_panic(__func__);
                             }}
                             "#,
-                            name
-                        ));
-                    }
+                    name
+                ));
+            }
         }
     }
 

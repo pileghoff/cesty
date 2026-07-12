@@ -3,10 +3,13 @@ pub use cesty_macro::define_mock;
 pub use cesty_macro::mock;
 pub use lazy_static::lazy_static;
 pub mod mem_mock;
+use std::ffi::{CStr, c_char};
 
 #[unsafe(no_mangle)]
-extern "C" fn cesty_panic() {
-    panic!();
+extern "C" fn cesty_panic(function: *const c_char) {
+    let function = unsafe { CStr::from_ptr(function) };
+
+    panic!("Called stubbed function {:?}", function);
 }
 
 unsafe impl<Tin, Tout> Send for FunctionMockInner<Tin, Tout>
@@ -25,7 +28,7 @@ impl<Tin, Tout> Default for FunctionMockInner<Tin, Tout>
 where
     Tin: Sized + 'static + Clone,
     Tout: Sized + 'static + Clone,
- {
+{
     fn default() -> Self {
         Self::new()
     }

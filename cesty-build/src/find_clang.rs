@@ -21,7 +21,7 @@ pub fn find_clang() -> Result<PathBuf> {
     find_clang_generic("clang", "CLANG").wrap_err(
         "Could not find 'clang' compiler. Checked for: clang, clang-22, clang-21, ..., clang-16\n\
          You can set the CLANG environment variable to specify the path to a clang executable.\n\
-         Install LLVM/Clang from: https://llvm.org/download.html"
+         Install LLVM/Clang from: https://llvm.org/download.html",
     )
 }
 
