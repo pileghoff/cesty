@@ -56,14 +56,13 @@ pub fn define_mock(input: TokenStream) -> TokenStream {
     quote!(
         cesty::lazy_static! {
             static ref #static_mock_name: std::sync::Mutex<cesty::FunctionMockInner<(#in_types), #out_sig>> =
-                std::sync::Mutex::new(cesty::FunctionMockInner::new());
+                std::sync::Mutex::new(cesty::FunctionMockInner::new(None));
         }
 
         #[unsafe(no_mangle)]
         unsafe extern "C" fn #extern_name(#in_sig) -> #out_sig {
             let mut cesty_mutex = #static_mock_name.lock().unwrap();
-            cesty_mutex.call_history.push( (#in_names) );
-            cesty_mutex.get_next_return()
+            cesty_mutex.handle( (#in_names) )
         }
     )
     .into()

@@ -27,3 +27,11 @@ fn c_driver_reads_button_from_mocked_hal() {
     assert_eq!((first, second), (1, 0));
     assert_eq!(gpio_read.calls(), vec![4, 4]);
 }
+
+#[test]
+fn c_driver_cutsom_handler() {
+    let gpio_read = mock!(hal_gpio_read);
+    gpio_read.handler(Box::new(|i| i * 2));
+
+    assert_eq!(cesty_gpio_example::read_button(4), 8);
+}

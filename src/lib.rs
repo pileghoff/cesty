@@ -21,6 +21,7 @@ where
 pub struct FunctionMockInner<Tin: Sized + 'static + Clone, Tout: Sized + 'static + Clone> {
     pub call_history: Vec<Tin>,
     pub return_val: std::collections::VecDeque<Tout>,
+    pub handler: Option<Box<dyn std::ops::Fn(Tin) -> Tout>>,
     pub default_ret_val: Option<Tout>,
 }
 
@@ -30,7 +31,7 @@ where
     Tout: Sized + 'static + Clone,
 {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
@@ -39,12 +40,25 @@ where
     Tin: Sized + 'static + Clone,
     Tout: Sized + 'static + Clone,
 {
-    pub fn new() -> Self {
+    pub fn new(handler: Option<Box<dyn std::ops::Fn(Tin) -> Tout>>) -> Self {
         FunctionMockInner {
             call_history: Vec::new(),
             return_val: std::collections::VecDeque::new(),
             default_ret_val: None,
+            handler,
         }
+    }
+
+    pub fn set_handler(&mut self, handler: Option<Box<dyn std::ops::Fn(Tin) -> Tout>>) {
+        self.handler = handler;
+    }
+
+    pub fn handle(&mut self, input: Tin) -> Tout {
+        if let Some(handler) = &self.handler {
+            return handler(input);
+        }
+        self.call_history.push(input);
+        self.get_next_return()
     }
 
     pub fn get_next_return(&mut self) -> Tout {
@@ -71,7 +85,12 @@ where
         inner.lock().unwrap().call_history.clear();
         inner.lock().unwrap().return_val.clear();
         inner.lock().unwrap().default_ret_val = None;
+        inner.lock().unwrap().set_handler(None);
         FunctionMock { inner }
+    }
+
+    pub fn handler(&self, handler: Box<dyn std::ops::Fn(Tin) -> Tout>) {
+        self.inner.lock().unwrap().set_handler(Some(handler));
     }
 
     pub fn calls(self) -> Vec<Tin> {
