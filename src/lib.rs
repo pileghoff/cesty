@@ -3,6 +3,7 @@ pub use cesty_macro::define_mock;
 pub use cesty_macro::mock;
 pub use lazy_static::lazy_static;
 pub mod mem_mock;
+pub mod shared_state;
 use std::ffi::{CStr, c_char};
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicI8, Ordering};
