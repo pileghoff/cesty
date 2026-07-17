@@ -14,3 +14,4 @@ categories = ["development-tools::ffi", "development-tools::testing", "embedded"
 [dependencies]
 lazy_static = "1.4.0"
 cesty-macro = {path="./cesty-macro/", version= "0.2.0" }
+yansi = "1.0.1"

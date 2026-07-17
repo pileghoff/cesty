@@ -4,12 +4,26 @@ pub use cesty_macro::mock;
 pub use lazy_static::lazy_static;
 pub mod mem_mock;
 use std::ffi::{CStr, c_char};
+use std::io::{self, Write};
+use std::sync::atomic::{AtomicI8, Ordering};
+use yansi::Paint;
 
 #[unsafe(no_mangle)]
 extern "C" fn cesty_panic(function: *const c_char) {
-    let function = unsafe { CStr::from_ptr(function) };
+    let func = AtomicI8::new(0);
+    std::panic::set_hook(Box::new(move |info| {
+        let info = info.payload_as_str().unwrap_or("missing payload");
+        if func.fetch_add(1, Ordering::Relaxed) == 0 {
+            _ = std::io::stderr().write_fmt(format_args!(
+                "\n\n{}: Called auto-stubbed function {}\n\n",
+                "Panic".bold().red(),
+                info.bold(),
+            ));
+        }
+    }));
 
-    panic!("Called stubbed function {:?}", function);
+    let function = unsafe { CStr::from_ptr(function) };
+    panic!("{:?}", function);
 }
 
 unsafe impl<Tin, Tout> Send for FunctionMockInner<Tin, Tout>
