@@ -2,6 +2,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Passes/PassBuilder.h"
 #if __has_include("llvm/Plugins/PassPlugin.h")
 #include "llvm/Plugins/PassPlugin.h"
