@@ -1,3 +1,4 @@
+use cesty::cesty_test;
 use cesty::mem_mock::Memmock;
 use proptest::prelude::*;
 
@@ -20,7 +21,7 @@ proptest! {
             fork: true,
             .. ProptestConfig::default()
         })]
-    #[test]
+    #[cesty_test]
     fn test_basic_read(ptr: usize, val: u32) {
         let mem_mock = Memmock::new();
         mem_mock.set(ptr, val.to_ne_bytes().into_iter().collect());
@@ -34,7 +35,7 @@ proptest! {
             fork: true,
             .. ProptestConfig::default()
         })]
-    #[test]
+    #[cesty_test]
     fn test_basic_write(ptr: usize, val: u32) {
         let mem_mock = Memmock::new();
         mem_mock.set(ptr, (0u32).to_ne_bytes().into_iter().collect());
@@ -50,7 +51,7 @@ proptest! {
             fork: true,
             .. ProptestConfig::default()
         })]
-    #[test]
+    #[cesty_test]
     fn test_multiple_read_writes(pairs: Vec<(usize, u32)>) {
         let mem_mock = Memmock::new();
         for (a, _) in pairs.iter() {
@@ -71,7 +72,7 @@ proptest! {
             fork: true,
             .. ProptestConfig::default()
         })]
-    #[test]
+    #[cesty_test]
     fn test_multiple_read_writes_same_addr(mut pairs: Vec<(usize, Vec<u32>)>) {
         let mem_mock = Memmock::new();
         let mut index = 0;
@@ -107,7 +108,7 @@ proptest! {
             fork: true,
             .. ProptestConfig::default()
         })]
-    #[test]
+    #[cesty_test]
     fn test_basic_read_byte(ptr: usize, val: u32) {
         let mem_mock = Memmock::new();
         mem_mock.set(ptr, val.to_ne_bytes().into_iter().collect());
@@ -131,7 +132,7 @@ proptest! {
             fork: true,
             .. ProptestConfig::default()
         })]
-    #[test]
+    #[cesty_test]
     fn test_basic_write_byte(ptr: usize, val: [u8;4]) {
         let mem_mock = Memmock::new();
         mem_mock.set(ptr, (0u32).to_ne_bytes().into_iter().collect());
@@ -168,7 +169,7 @@ proptest! {
             fork: true,
             .. ProptestConfig::default()
         })]
-    #[test]
+    #[cesty_test]
     fn test_memcpy_read_write((val, src, dst) in non_overlapping_inputs()) {
         let mem_mock = Memmock::new();
 
@@ -187,7 +188,7 @@ proptest! {
             fork: true,
             .. ProptestConfig::default()
         })]
-    #[test]
+    #[cesty_test]
     fn test_memmove_read_write(val in proptest::collection::vec(any::<u8>(), 1..=1000), src: usize, dst:usize)
 
     {
@@ -208,7 +209,7 @@ proptest! {
             fork: true,
             .. ProptestConfig::default()
         })]
-    #[test]
+    #[cesty_test]
     fn test_memset(addr: usize, size in 1usize..1000, val:u8) {
         let mem_mock = Memmock::new();
 
@@ -226,7 +227,7 @@ proptest! {
             fork: true,
             .. ProptestConfig::default()
         })]
-    #[test]
+    #[cesty_test]
     fn test_memcmp_same((mut val, a, b) in non_overlapping_inputs()) {
         let mem_mock = Memmock::new();
 

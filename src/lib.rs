@@ -1,9 +1,11 @@
 #![doc = include_str!("../README.md")]
+pub use cesty_macro::cesty_test;
 pub use cesty_macro::define_mock;
 pub use cesty_macro::mock;
 pub use lazy_static::lazy_static;
 pub mod mem_mock;
 pub mod shared_state;
+pub mod test_runner;
 
 pub mod cesty_panic {
     use std::ffi::{CStr, c_char};

@@ -1,10 +1,10 @@
 use std::ffi::c_int;
 
-use cesty::{define_mock, mock};
+use cesty::{cesty_test, define_mock, mock};
 
 define_mock!(fn foo(pin: c_int) -> c_int);
 
-#[test]
+#[cesty_test]
 fn basic() {
     let foo_mock = mock!(foo);
     // set the default return value

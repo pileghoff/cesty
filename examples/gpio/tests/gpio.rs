@@ -1,10 +1,10 @@
-use cesty::{define_mock, mock};
+use cesty::{cesty_test, define_mock, mock};
 use std::ffi::c_int;
 
 define_mock!(fn hal_gpio_write(pin: c_int, value: c_int));
 define_mock!(fn hal_gpio_read(pin: c_int) -> c_int);
 
-#[test]
+#[cesty_test]
 fn c_driver_forwards_led_writes_to_mocked_hal() {
     let gpio_write = mock!(hal_gpio_write);
     gpio_write.set_default_return(());
@@ -15,7 +15,7 @@ fn c_driver_forwards_led_writes_to_mocked_hal() {
     assert_eq!(gpio_write.calls(), vec![(13, 1), (13, 0)]);
 }
 
-#[test]
+#[cesty_test]
 fn c_driver_reads_button_from_mocked_hal() {
     let gpio_read = mock!(hal_gpio_read);
     gpio_read.add_return(1);
@@ -28,7 +28,7 @@ fn c_driver_reads_button_from_mocked_hal() {
     assert_eq!(gpio_read.calls(), vec![4, 4]);
 }
 
-#[test]
+#[cesty_test]
 fn c_driver_cutsom_handler() {
     let gpio_read = mock!(hal_gpio_read);
     gpio_read.handler(Box::new(|i| i * 2));
