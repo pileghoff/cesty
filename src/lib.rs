@@ -11,6 +11,7 @@ pub mod shared_state;
 pub mod test_runner;
 
 pub mod cesty_panic {
+    use crate::format_backtrace::format_backtrace;
     use std::ffi::{CStr, c_char};
     use std::io::Write;
     use std::sync::atomic::{AtomicI8, Ordering};
@@ -18,19 +19,22 @@ pub mod cesty_panic {
 
     #[unsafe(no_mangle)]
     extern "C" fn cesty_panic(function: *const c_char) {
-        let func = AtomicI8::new(0);
+        let function = unsafe { CStr::from_ptr(function) }.to_str().unwrap();
+        let funct = std::sync::atomic::AtomicI8::new(0);
+        let stack_trace = format_backtrace(function);
+
         std::panic::set_hook(Box::new(move |info| {
             let info = info.payload_as_str().unwrap_or("missing payload");
-            if func.fetch_add(1, Ordering::Relaxed) == 0 {
+            if funct.fetch_add(1, Ordering::Relaxed) == 0 {
                 _ = std::io::stderr().write_fmt(format_args!(
-                    "\n\n{}: Called auto-stubbed function {}\n\n",
+                    "\n\n{}: Called auto-stubbed function {}\nFrom: \n  {}\n\n",
                     "Panic".bold().red(),
                     info.bold(),
+                    stack_trace
                 ));
             }
         }));
 
-        let function = unsafe { CStr::from_ptr(function) };
         panic!("{:?}", function);
     }
 }
