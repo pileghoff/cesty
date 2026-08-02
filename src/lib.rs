@@ -23,19 +23,18 @@ pub mod cesty_panic {
         let funct = std::sync::atomic::AtomicI8::new(0);
         let stack_trace = format_backtrace(function);
 
-        std::panic::set_hook(Box::new(move |info| {
-            let info = info.payload_as_str().unwrap_or("missing payload");
+        std::panic::set_hook(Box::new(move |_info| {
             if funct.fetch_add(1, Ordering::Relaxed) == 0 {
                 _ = std::io::stderr().write_fmt(format_args!(
                     "\n\n{}: Called auto-stubbed function {}\nFrom: \n  {}\n\n",
                     "Panic".bold().red(),
-                    info.bold(),
+                    function.bold(),
                     stack_trace
                 ));
             }
         }));
 
-        panic!("{:?}", function);
+        panic!();
     }
 }
 
