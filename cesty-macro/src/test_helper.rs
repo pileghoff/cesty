@@ -25,7 +25,7 @@ pub fn cesty_test(item: TokenStream) -> TokenStream {
         #[test]
         #head
         {
-            cesty::test_runner::cesty_run_test(|| #body)
+            cesty::test_runner::cesty_run_test_internal(|| #body)
         }
     })
 }

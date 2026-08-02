@@ -80,6 +80,7 @@ pub fn build_c_tests_from_manifest(manifest_path: &Path) -> Result<()> {
         let clang = find_clang()?;
         build.compiler(clang);
         build.flags(flags);
+        build.flags(&[String::from("--debug")]);
 
         for source in &sources {
             let path = manifest_dir.join(source);

@@ -45,6 +45,7 @@ pub fn define_mock(input: TokenStream) -> TokenStream {
         func.ident.to_string().to_ascii_uppercase()
     );
     let extern_name = func.ident;
+    let name_str = extern_name.to_string();
     let in_types = get_types(&func.inputs);
     let in_names = get_names(&func.inputs);
     let in_sig = func.inputs;
@@ -56,7 +57,7 @@ pub fn define_mock(input: TokenStream) -> TokenStream {
     quote!(
         cesty::lazy_static! {
             static ref #static_mock_name: std::sync::Mutex<cesty::FunctionMockInner<(#in_types), #out_sig>> =
-                std::sync::Mutex::new(cesty::FunctionMockInner::new(None));
+                std::sync::Mutex::new(cesty::FunctionMockInner::new(String::from(#name_str)));
         }
 
         #[unsafe(no_mangle)]
