@@ -1,4 +1,4 @@
-workspace = { members = ["examples/mock_basics", "examples/mem_mock", "examples/gpio", "cesty-build", "cesty-macro", "tests/address-mock-test"] }
+workspace = { members = ["examples/mock_basics", "examples/mem_mock", "examples/gpio", "cesty-build", "cesty-macro", "tests/address-mock-test", "tests/backtrace-test"] }
 [package]
 name = "cesty"
 version = "0.2.0"

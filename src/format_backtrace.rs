@@ -1,14 +1,12 @@
 use backtrace::BacktraceSymbol;
-use backtrace::Symbol;
-use regex::Regex;
 use regex::regex;
 use yansi::Paint;
 
 fn fixup_simple_closure(name: &str) -> Option<String> {
-    let re = regex!(r"^(\w+)\[[a-z0-9]{16}\]::((?:\w|::)+)::\{closure#[0-9+]\}$");
+    let re = regex!(r"^(\w+)\[[a-z0-9]{16}\]((?:::(?:\w+|\{closure#[0-9]+\}))+)");
     let captures = re.captures(name);
     if let Some(captures) = captures {
-        return Some(format!("{}::{}", &captures[1], &captures[2]).to_string());
+        return Some(format!("{}{}", &captures[1], &captures[2]).to_string());
     }
 
     None
@@ -61,8 +59,8 @@ fn fixup_ugly_rust_name(symbol: &BacktraceSymbol) -> (String, String) {
             };
 
             (
-                name,
-                format!("{} [{}:{}]", n.bold(), file, line,).to_string(),
+                name.clone(),
+                format!("{} [{}:{}]", name.bold(), file, line,).to_string(),
             )
         }
         None => (String::from("Unknown"), String::from("Unknown")),
@@ -82,7 +80,9 @@ pub fn format_backtrace(start: &str) -> String {
             }
             let info = f.symbols().first().map(fixup_ugly_rust_name);
             if let Some(ref info) = info
-                && info.0.contains("::test_runner::cesty_run_test_internal::")
+                && info
+                    .0
+                    .contains("cesty::test_runner::cesty_run_test_internal")
             {
                 got_last = true;
                 return None;

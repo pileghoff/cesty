@@ -1,0 +1,7 @@
+[1;31mPanic[0m: Called auto-stubbed function [1mbaz[0m
+From: 
+  [1mfoo[0m [/home/pil/cesty/tests/backtrace-test/dut.c:11]
+  [1mtest::test_autostubbed::{closure#0}[0m  [/home/pil/cesty/tests/backtrace-test/test.rs:11]
+
+thread caused non-unwinding panic. aborting.
+error: test failed, to rerun pass `--test test`

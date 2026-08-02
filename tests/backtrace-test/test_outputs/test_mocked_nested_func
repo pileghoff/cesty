@@ -1,0 +1,8 @@
+Called uninstatied mock [1;31mbar[0m 
+From: 
+  [1mfoo[0m [/home/pil/cesty/tests/backtrace-test/dut.c:7]
+  [1mtest::nested::test_mocked_nested_func::{closure#0}::inner[0m  [/home/pil/cesty/tests/backtrace-test/test.rs:25]
+  [1mtest::nested::test_mocked_nested_func::{closure#0}[0m  [/home/pil/cesty/tests/backtrace-test/test.rs:28]
+-----------------------------------------
+thread caused non-unwinding panic. aborting.
+error: test failed, to rerun pass `--test test`
