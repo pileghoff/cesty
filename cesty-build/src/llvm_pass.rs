@@ -48,11 +48,9 @@ pub fn build_llvm_plugin() -> Result<String> {
     if !status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(MietteDiagnostic::new(format!(
-        "Failed to build the Cesty LLVM plugin. The plugin is a shared library that extends the LLVM compiler. \
+        return Err(MietteDiagnostic::new("Failed to build the Cesty LLVM plugin. The plugin is a shared library that extends the LLVM compiler. \
          Check that clang++ and llvm-config are properly installed and compatible. \
-         See compiler output above for details."
-            ))
+         See compiler output above for details.".to_string())
             .with_help(format!(
                 "Command:\n  {:?}\n\nStdout:\n{}\nStderr:\n{}",
                 cmd, stdout, stderr

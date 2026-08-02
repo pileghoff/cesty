@@ -14,7 +14,7 @@ pub mod cesty_panic {
     use crate::format_backtrace::format_backtrace;
     use std::ffi::{CStr, c_char};
     use std::io::Write;
-    use std::sync::atomic::{AtomicI8, Ordering};
+    use std::sync::atomic::Ordering;
     use yansi::Paint;
 
     #[unsafe(no_mangle)]

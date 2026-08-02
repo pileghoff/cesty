@@ -59,8 +59,8 @@ fn fixup_ugly_rust_name(symbol: &BacktraceSymbol) -> (String, String) {
             };
 
             (
-                name.clone(),
-                format!("{} [{}:{}]", name.bold(), file, line,).to_string(),
+                name,
+                format!("{} [{}:{}]", n.bold(), file, line,).to_string(),
             )
         }
         None => (String::from("Unknown"), String::from("Unknown")),
