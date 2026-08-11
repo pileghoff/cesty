@@ -1,3 +1,0 @@
-# Zephyr example
-
-Later
