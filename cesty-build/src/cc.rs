@@ -63,10 +63,11 @@ impl Build {
 
         // ensure object dir exists
         let obj_dir = out_dir.join("cesty-obj");
-        let _ = std::fs::remove_dir_all(&obj_dir);
-        std::fs::create_dir_all(&obj_dir)
-            .into_diagnostic()
-            .wrap_err(format!("failed to create object dir {}", obj_dir.display()))?;
+        if !obj_dir.exists() {
+            std::fs::create_dir_all(&obj_dir)
+                .into_diagnostic()
+                .wrap_err(format!("failed to create object dir {}", obj_dir.display()))?;
+        }
 
         let file_stem = src
             .file_stem()

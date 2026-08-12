@@ -35,3 +35,11 @@ fn c_driver_cutsom_handler() {
 
     assert_eq!(cesty_gpio_example::read_button(4), 8);
 }
+
+#[cesty_test]
+fn c_driver_read_ext_test() {
+    let gpio_read = mock!(hal_gpio_read);
+    gpio_read.add_return(1);
+
+    assert_eq!(cesty_gpio_example::read_ext(4), 1);
+}

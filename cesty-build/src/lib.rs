@@ -220,6 +220,9 @@ fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<()> {
             "Failed to parse the compiled test library archive at {}. The archive may be corrupted or in an unsupported format.",
             archive_path.display()
         ))?;
+
+    let mut stubbed_names = Vec::new();
+
     for member in archive.members() {
         let member = member
             .into_diagnostic()
@@ -247,6 +250,7 @@ fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<()> {
             if sym.is_undefined()
                 && let Ok(name) = sym.name()
                 && !name.is_empty()
+                && !stubbed_names.contains(&name.to_string())
             {
                 contents.push_str(&format!(
                     r#"
@@ -256,6 +260,7 @@ fn auto_stub(test_name: &str, out_dir: &OsString) -> Result<()> {
                             "#,
                     name
                 ));
+                stubbed_names.push(name.to_string());
             }
         }
     }

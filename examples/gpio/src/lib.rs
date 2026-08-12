@@ -3,6 +3,7 @@ use std::ffi::c_int;
 unsafe extern "C" {
     fn driver_set_led(pin: c_int, enabled: c_int);
     fn driver_read_button(pin: c_int) -> c_int;
+    fn driver_read_ext(pin: c_int) -> c_int;
 }
 
 pub fn set_led(pin: c_int, enabled: bool) {
@@ -13,4 +14,8 @@ pub fn set_led(pin: c_int, enabled: bool) {
 
 pub fn read_button(pin: c_int) -> c_int {
     unsafe { driver_read_button(pin) }
+}
+
+pub fn read_ext(pin: c_int) -> c_int {
+    unsafe { driver_read_ext(pin) }
 }

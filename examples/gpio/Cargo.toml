@@ -14,7 +14,7 @@ cesty = { path = "../.." }
 cesty-build = { path = "../../cesty-build" }
 
 [cesty.gpio]
-sources = ["c/gpio_driver.c"]
+sources = ["c/gpio_driver.c", "c/gpio_driver_ext.c"]
 includes = ["include"]
 ignore = ["arch/types.h"]
 flags = "-DGPIO_MODULE"
