@@ -120,6 +120,10 @@ public:
       handle_memset(MS);
     }
 
+    for (MemMoveInst *MV : Moves) {
+      handle_memmove(MV);
+    }
+
     for (CallInst *CI : Cmps) {
       handle_memcmp(CI);
     }

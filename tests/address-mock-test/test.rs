@@ -197,7 +197,7 @@ proptest! {
         mem_mock.set(dst, vec![0;val.len()]);
         mem_mock.set(src, val.clone());
 
-        unsafe { memcpy_proxy(dst as *mut u8, src as *mut u8, val.len() as i32) };
+        unsafe { memmove_proxy(dst as *mut u8, src as *mut u8, val.len() as i32) };
 
         assert_eq!(mem_mock.get(dst, val.len()).unwrap(), val);
 
